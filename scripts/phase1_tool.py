@@ -11,7 +11,9 @@ from pathlib import Path
 REGIONS = ("resources", "ageAndTimer", "globalQueue")
 RESOURCE_ORDER = ("food", "wood", "gold", "stone")
 RESOURCE_READER = "tesseract-position"
+VILLAGER_READER = "masked-template"
 MAX_REASONABLE_POPULATION = 250
+DEFAULT_VILLAGER_TEMPLATE = "templates/queue/villager.png"
 RESOURCE_PANEL_FIELDS = {
     "population": (50, 15, 95, 55),
     "idleVillagers": (190, 15, 40, 50),
@@ -826,6 +828,137 @@ def match_template(source_path, template_path, threshold, output_path):
     }
 
 
+def parse_scales(value):
+    try:
+        scales = [float(part.strip()) for part in value.split(",") if part.strip()]
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("scales must be comma-separated numbers") from exc
+
+    if not scales:
+        raise argparse.ArgumentTypeError("at least one scale is required")
+    if any(scale <= 0 for scale in scales):
+        raise argparse.ArgumentTypeError("scales must be positive")
+
+    return scales
+
+
+def villager_template_mask(template, number_mask_ratio, border_mask_ratio):
+    import cv2
+    import numpy as np
+
+    height, width = template.shape[:2]
+    mask = np.full((height, width), 255, dtype=np.uint8)
+
+    border_x = round(width * border_mask_ratio)
+    border_y = round(height * border_mask_ratio)
+    if border_x > 0:
+        mask[:, :border_x] = 0
+        mask[:, width - border_x :] = 0
+    if border_y > 0:
+        mask[:border_y, :] = 0
+        mask[height - border_y :, :] = 0
+
+    number_width = round(width * number_mask_ratio)
+    number_height = round(height * number_mask_ratio)
+    mask[:number_height, :number_width] = 0
+
+    return cv2.merge([mask, mask, mask])
+
+
+def match_villager_icon(frame, template_path, args):
+    import cv2
+    import numpy as np
+
+    template = cv2.imread(str(template_path), cv2.IMREAD_COLOR)
+    if template is None:
+        raise RuntimeError(f"could not read villager template: {template_path}")
+
+    source_height, source_width = frame.shape[:2]
+    template_height, template_width = template.shape[:2]
+    best = None
+
+    for scale in args.scales:
+        if scale == 1.0:
+            scaled_template = template
+        else:
+            scaled_template = cv2.resize(
+                template,
+                None,
+                fx=scale,
+                fy=scale,
+                interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC,
+            )
+
+        height, width = scaled_template.shape[:2]
+        if width > source_width or height > source_height:
+            continue
+
+        mask = villager_template_mask(
+            scaled_template,
+            args.number_mask_ratio,
+            args.border_mask_ratio,
+        )
+        result = cv2.matchTemplate(
+            frame,
+            scaled_template,
+            cv2.TM_CCORR_NORMED,
+            mask=mask,
+        )
+        result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+        _, max_value, _, max_location = cv2.minMaxLoc(result)
+        candidate = {
+            "score": float(max_value),
+            "scale": scale,
+            "match": {
+                "x": int(max_location[0]),
+                "y": int(max_location[1]),
+                "width": int(width),
+                "height": int(height),
+            },
+        }
+        if best is None or candidate["score"] > best["score"]:
+            best = candidate
+
+    if best is None:
+        best = {
+            "score": 0.0,
+            "scale": None,
+            "match": None,
+        }
+
+    best["villagerQueued"] = best["score"] >= args.threshold
+    best["shouldRemindVillager"] = not best["villagerQueued"]
+    best["threshold"] = args.threshold
+    return best
+
+
+def save_villager_debug_image(frame, result, output_path):
+    import cv2
+
+    debug = frame.copy()
+    match = result.get("match")
+    color = (0, 255, 0) if result["villagerQueued"] else (0, 0, 255)
+    if match:
+        x = match["x"]
+        y = match["y"]
+        width = match["width"]
+        height = match["height"]
+        cv2.rectangle(debug, (x, y), (x + width, y + height), color, 2)
+        cv2.putText(
+            debug,
+            f"{result['score']:.3f}",
+            (x, max(12, y - 6)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            color,
+            1,
+            cv2.LINE_AA,
+        )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(output_path), debug)
+
+
 class CalibrationApp:
     def __init__(self, args, monitor, screenshot_path, initial_rects):
         import tkinter as tk
@@ -1133,6 +1266,107 @@ def command_match(args):
     return 0
 
 
+def read_queue_frame(args):
+    import cv2
+
+    if args.source_image:
+        frame = cv2.imread(str(Path(args.source_image)), cv2.IMREAD_COLOR)
+        if frame is None:
+            raise RuntimeError(f"could not read source image: {args.source_image}")
+        return frame
+
+    rect = args.rect or load_region(Path(args.config), "globalQueue")
+    return grab_region_bgr(rect)
+
+
+def villager_payload(result, elapsed_ms, state_changed=None):
+    payload = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "reader": VILLAGER_READER,
+        "villagerQueued": result["villagerQueued"],
+        "shouldRemindVillager": result["shouldRemindVillager"],
+        "score": round(result["score"], 4),
+        "threshold": result["threshold"],
+        "match": result["match"],
+        "scale": result["scale"],
+        "elapsedMs": round(elapsed_ms, 2),
+    }
+    if state_changed is not None:
+        payload["stateChanged"] = state_changed
+    return payload
+
+
+def command_match_villager(args):
+    import cv2
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    started = time.perf_counter()
+    frame = read_queue_frame(args)
+    result = match_villager_icon(frame, Path(args.template), args)
+    elapsed_ms = (time.perf_counter() - started) * 1000
+
+    if args.debug_images:
+        raw_path = output_dir / f"queue-{timestamp}.png"
+        debug_path = output_dir / f"queue-{timestamp}-villager.png"
+        cv2.imwrite(str(raw_path), frame)
+        save_villager_debug_image(frame, result, debug_path)
+        result["sourceImage"] = str(raw_path)
+        result["debugImage"] = str(debug_path)
+
+    print(json.dumps(villager_payload(result, elapsed_ms), indent=2))
+    return 0
+
+
+def command_watch_villager(args):
+    import cv2
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    previous_queued = None
+
+    if args.source_image:
+        print(f"Reading queue from image {args.source_image}.", file=sys.stderr)
+    else:
+        rect = args.rect or load_region(Path(args.config), "globalQueue")
+        print(
+            f"Watching globalQueue region {rect}. Press Ctrl+C to stop.",
+            file=sys.stderr,
+        )
+
+    try:
+        while True:
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
+            started = time.perf_counter()
+            frame = read_queue_frame(args)
+            result = match_villager_icon(frame, Path(args.template), args)
+            elapsed_ms = (time.perf_counter() - started) * 1000
+            state_changed = (
+                previous_queued is not None
+                and previous_queued != result["villagerQueued"]
+            )
+            previous_queued = result["villagerQueued"]
+
+            if args.debug_images:
+                raw_path = output_dir / f"queue-{timestamp}.png"
+                debug_path = output_dir / f"queue-{timestamp}-villager.png"
+                cv2.imwrite(str(raw_path), frame)
+                save_villager_debug_image(frame, result, debug_path)
+
+            print(
+                json.dumps(villager_payload(result, elapsed_ms, state_changed)),
+                flush=True,
+            )
+            if args.once or args.source_image:
+                return 0
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        print("Stopped villager watcher.", file=sys.stderr)
+        return 0
+
+
 def command_watch_resources(args):
     import cv2
 
@@ -1253,6 +1487,19 @@ def add_region_args(parser):
     parser.add_argument("--output-dir", default="captures")
 
 
+def add_villager_args(parser):
+    parser.add_argument("--config", default="config/calibration.2560x1440.json")
+    parser.add_argument("--rect", type=parse_rect)
+    parser.add_argument("--template", default=DEFAULT_VILLAGER_TEMPLATE)
+    parser.add_argument("--threshold", type=float, default=0.88)
+    parser.add_argument("--scales", type=parse_scales, default=[1.0])
+    parser.add_argument("--number-mask-ratio", type=float, default=0.40)
+    parser.add_argument("--border-mask-ratio", type=float, default=0.04)
+    parser.add_argument("--source-image")
+    parser.add_argument("--output-dir", default="captures/queue")
+    parser.add_argument("--debug-images", action="store_true")
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description="AoE4 Reminder phase 1 vision tool.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1292,6 +1539,22 @@ def build_parser():
     match.add_argument("--threshold", type=float, default=0.90)
     match.add_argument("--source-image")
     match.set_defaults(func=command_match)
+
+    match_villager = subparsers.add_parser(
+        "match-villager",
+        help="detect whether a villager icon is present in the global queue",
+    )
+    add_villager_args(match_villager)
+    match_villager.set_defaults(func=command_match_villager)
+
+    watch_villager = subparsers.add_parser(
+        "watch-villager",
+        help="detect villager queue presence repeatedly with immediate false on miss",
+    )
+    add_villager_args(watch_villager)
+    watch_villager.add_argument("--interval", type=float, default=0.33)
+    watch_villager.add_argument("--once", action="store_true")
+    watch_villager.set_defaults(func=command_watch_villager)
 
     watch_resources = subparsers.add_parser(
         "watch-resources",
