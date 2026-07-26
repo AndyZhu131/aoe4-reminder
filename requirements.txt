@@ -1,0 +1,5 @@
+mss>=9.0.1
+numpy>=2.0.0
+opencv-python>=4.10.0
+pillow>=10.0.0
+pytesseract>=0.3.13

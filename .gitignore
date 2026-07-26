@@ -1,0 +1,6 @@
+captures/*.png
+captures/*.json
+captures/**/*.png
+captures/**/*.json
+__pycache__/
+scripts/__pycache__/
