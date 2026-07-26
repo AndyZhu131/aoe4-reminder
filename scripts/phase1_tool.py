@@ -14,6 +14,12 @@ RESOURCE_READER = "tesseract-position"
 VILLAGER_READER = "masked-template"
 MAX_REASONABLE_POPULATION = 250
 DEFAULT_VILLAGER_TEMPLATE = "templates/queue/villager.png"
+PRODUCTION_QUEUE_TILE_SIZE = 48
+PRODUCTION_QUEUE_LEFT_OFFSET = 10
+PRODUCTION_QUEUE_SLOT_PITCH = 58
+PRODUCTION_QUEUE_MIN_BLUE_COVERAGE = 0.15
+PRODUCTION_QUEUE_MIN_PORTRAIT_COVERAGE = 0.05
+PRODUCTION_QUEUE_MIN_HEAD_COVERAGE = 0.05
 RESOURCE_PANEL_FIELDS = {
     "population": (50, 15, 95, 55),
     "idleVillagers": (190, 15, 40, 50),
@@ -865,6 +871,78 @@ def villager_template_mask(template, number_mask_ratio, border_mask_ratio):
     return cv2.merge([mask, mask, mask])
 
 
+def find_economy_queue_tiles(frame):
+    import cv2
+    import numpy as np
+
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    blue_mask = cv2.inRange(
+        hsv,
+        np.array((100, 20, 10)),
+        np.array((130, 255, 170)),
+    )
+    portrait_mask = cv2.inRange(
+        hsv,
+        np.array((5, 60, 80)),
+        np.array((24, 255, 255)),
+    )
+    tiles = []
+    tile_size = min(PRODUCTION_QUEUE_TILE_SIZE, frame.shape[0], frame.shape[1])
+    row_y = frame.shape[0] - tile_size
+    if tile_size < PRODUCTION_QUEUE_TILE_SIZE:
+        return tiles
+
+    tile_area = tile_size * tile_size
+    for x in range(
+        PRODUCTION_QUEUE_LEFT_OFFSET,
+        frame.shape[1] - tile_size + 1,
+        PRODUCTION_QUEUE_SLOT_PITCH,
+    ):
+        blue_coverage = (
+            cv2.countNonZero(blue_mask[row_y : row_y + tile_size, x : x + tile_size])
+            / tile_area
+        )
+        if blue_coverage < PRODUCTION_QUEUE_MIN_BLUE_COVERAGE:
+            continue
+
+        portrait = portrait_mask[row_y : row_y + tile_size, x : x + tile_size]
+        portrait_coverage = cv2.countNonZero(portrait) / tile_area
+        if portrait_coverage < PRODUCTION_QUEUE_MIN_PORTRAIT_COVERAGE:
+            continue
+
+        top_half = portrait[: tile_size // 2, :]
+        left_head_coverage = cv2.countNonZero(top_half[:, : tile_size // 2]) / (
+            tile_size * tile_size / 4
+        )
+        right_head_coverage = cv2.countNonZero(top_half[:, tile_size // 2 :]) / (
+            tile_size * tile_size / 4
+        )
+        if min(left_head_coverage, right_head_coverage) < PRODUCTION_QUEUE_MIN_HEAD_COVERAGE:
+            continue
+
+        tiles.append(
+            {
+                "x": x,
+                "y": row_y,
+                "width": tile_size,
+                "height": tile_size,
+                "blueCoverage": round(blue_coverage, 3),
+                "portraitCoverage": round(portrait_coverage, 3),
+                "leftHeadCoverage": round(left_head_coverage, 3),
+                "rightHeadCoverage": round(right_head_coverage, 3),
+            }
+        )
+
+    return tiles
+
+
+def crop_production_queue(frame):
+    # Debug captures already contain the lower production half.
+    if frame.shape[0] <= PRODUCTION_QUEUE_TILE_SIZE * 1.25:
+        return frame
+    return frame[frame.shape[0] // 2 :, :]
+
+
 def match_villager_icon(frame, template_path, args):
     import cv2
     import numpy as np
@@ -873,51 +951,57 @@ def match_villager_icon(frame, template_path, args):
     if template is None:
         raise RuntimeError(f"could not read villager template: {template_path}")
 
-    source_height, source_width = frame.shape[:2]
-    template_height, template_width = template.shape[:2]
+    queue_tiles = find_economy_queue_tiles(frame)
     best = None
 
-    for scale in args.scales:
-        if scale == 1.0:
-            scaled_template = template
-        else:
-            scaled_template = cv2.resize(
-                template,
-                None,
-                fx=scale,
-                fy=scale,
-                interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC,
+    for tile in queue_tiles:
+        x = tile["x"]
+        y = tile["y"]
+        source = frame[y : y + tile["height"], x : x + tile["width"]]
+
+        for scale in args.scales:
+            if scale == 1.0:
+                scaled_template = template
+            else:
+                scaled_template = cv2.resize(
+                    template,
+                    None,
+                    fx=scale,
+                    fy=scale,
+                    interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC,
+                )
+
+            height, width = scaled_template.shape[:2]
+            source_height, source_width = source.shape[:2]
+            if width > source_width or height > source_height:
+                continue
+
+            mask = villager_template_mask(
+                scaled_template,
+                args.number_mask_ratio,
+                args.border_mask_ratio,
             )
-
-        height, width = scaled_template.shape[:2]
-        if width > source_width or height > source_height:
-            continue
-
-        mask = villager_template_mask(
-            scaled_template,
-            args.number_mask_ratio,
-            args.border_mask_ratio,
-        )
-        result = cv2.matchTemplate(
-            frame,
-            scaled_template,
-            cv2.TM_CCORR_NORMED,
-            mask=mask,
-        )
-        result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
-        _, max_value, _, max_location = cv2.minMaxLoc(result)
-        candidate = {
-            "score": float(max_value),
-            "scale": scale,
-            "match": {
-                "x": int(max_location[0]),
-                "y": int(max_location[1]),
-                "width": int(width),
-                "height": int(height),
-            },
-        }
-        if best is None or candidate["score"] > best["score"]:
-            best = candidate
+            result = cv2.matchTemplate(
+                source,
+                scaled_template,
+                cv2.TM_CCORR_NORMED,
+                mask=mask,
+            )
+            result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+            _, max_value, _, max_location = cv2.minMaxLoc(result)
+            candidate = {
+                "score": float(max_value),
+                "scale": scale,
+                "queueTile": tile,
+                "match": {
+                    "x": x + int(max_location[0]),
+                    "y": y + int(max_location[1]),
+                    "width": int(width),
+                    "height": int(height),
+                },
+            }
+            if best is None or candidate["score"] > best["score"]:
+                best = candidate
 
     if best is None:
         best = {
@@ -926,6 +1010,8 @@ def match_villager_icon(frame, template_path, args):
             "match": None,
         }
 
+    best["queueTileCount"] = len(queue_tiles)
+    best["queueTiles"] = queue_tiles
     best["villagerQueued"] = best["score"] >= args.threshold
     best["shouldRemindVillager"] = not best["villagerQueued"]
     best["threshold"] = args.threshold
@@ -936,6 +1022,13 @@ def save_villager_debug_image(frame, result, output_path):
     import cv2
 
     debug = frame.copy()
+    for tile in result.get("queueTiles", []):
+        x = tile["x"]
+        y = tile["y"]
+        width = tile["width"]
+        height = tile["height"]
+        cv2.rectangle(debug, (x, y), (x + width, y + height), (255, 255, 0), 1)
+
     match = result.get("match")
     color = (0, 255, 0) if result["villagerQueued"] else (0, 0, 255)
     if match:
@@ -1273,10 +1366,10 @@ def read_queue_frame(args):
         frame = cv2.imread(str(Path(args.source_image)), cv2.IMREAD_COLOR)
         if frame is None:
             raise RuntimeError(f"could not read source image: {args.source_image}")
-        return frame
+        return crop_production_queue(frame)
 
     rect = args.rect or load_region(Path(args.config), "globalQueue")
-    return grab_region_bgr(rect)
+    return crop_production_queue(grab_region_bgr(rect))
 
 
 def villager_payload(result, elapsed_ms, state_changed=None):
@@ -1289,6 +1382,7 @@ def villager_payload(result, elapsed_ms, state_changed=None):
         "threshold": result["threshold"],
         "match": result["match"],
         "scale": result["scale"],
+        "queueTileCount": result["queueTileCount"],
         "elapsedMs": round(elapsed_ms, 2),
     }
     if state_changed is not None:
@@ -1459,6 +1553,47 @@ def command_test_resources(args):
     return 0
 
 
+def command_test_villagers(args):
+    import cv2
+
+    fixture_dir = Path(args.fixture_dir)
+    expected_path = fixture_dir / "expected.json"
+    expected = load_json(expected_path)
+    if expected is None:
+        raise RuntimeError(f"expected fixture data not found: {expected_path}")
+
+    template_path = Path(args.template)
+    results = {}
+    failures = []
+
+    for image_name, expected_queued in expected.items():
+        image_path = fixture_dir / image_name
+        frame = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+        if frame is None:
+            failure = {"image": image_name, "error": "could not read image"}
+            results[image_name] = failure
+            failures.append(failure)
+            continue
+
+        result = match_villager_icon(crop_production_queue(frame), template_path, args)
+        actual_queued = result["villagerQueued"]
+        passed = actual_queued == expected_queued
+        results[image_name] = {
+            "passed": passed,
+            "actual": {
+                "villagerQueued": actual_queued,
+                "score": round(result["score"], 4),
+                "queueTileCount": result["queueTileCount"],
+            },
+            "expected": {"villagerQueued": expected_queued},
+        }
+        if not passed:
+            failures.append(results[image_name])
+
+    print(json.dumps(results, indent=2))
+    return 1 if failures else 0
+
+
 def command_monitors(_args):
     import mss
 
@@ -1491,8 +1626,12 @@ def add_villager_args(parser):
     parser.add_argument("--config", default="config/calibration.2560x1440.json")
     parser.add_argument("--rect", type=parse_rect)
     parser.add_argument("--template", default=DEFAULT_VILLAGER_TEMPLATE)
-    parser.add_argument("--threshold", type=float, default=0.88)
-    parser.add_argument("--scales", type=parse_scales, default=[1.0])
+    parser.add_argument("--threshold", type=float, default=0.85)
+    parser.add_argument(
+        "--scales",
+        type=parse_scales,
+        default=[0.82, 0.86, 0.90, 0.94, 0.98, 1.0],
+    )
     parser.add_argument("--number-mask-ratio", type=float, default=0.40)
     parser.add_argument("--border-mask-ratio", type=float, default=0.04)
     parser.add_argument("--source-image")
@@ -1588,6 +1727,17 @@ def build_parser():
     test_resources.add_argument("--tesseract-cmd")
     test_resources.add_argument("--raw-fields", action="store_true")
     test_resources.set_defaults(func=command_test_resources)
+
+    test_villagers = subparsers.add_parser(
+        "test-villagers",
+        help="run villager queue detection against checked-in live captures",
+    )
+    add_villager_args(test_villagers)
+    test_villagers.add_argument(
+        "--fixture-dir",
+        default="tests/fixtures/villager_queue",
+    )
+    test_villagers.set_defaults(func=command_test_villagers)
 
     return parser
 
