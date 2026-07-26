@@ -1,0 +1,25 @@
+{
+  "resolution": "2560x1440",
+  "uiScale": "100%",
+  "monitor": 1,
+  "regions": {
+    "resources": [
+      0,
+      1116,
+      256,
+      295
+    ],
+    "ageAndTimer": [
+      1174,
+      48,
+      220,
+      126
+    ],
+    "globalQueue": [
+      5,
+      909,
+      520,
+      116
+    ]
+  }
+}

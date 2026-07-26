@@ -1,0 +1,59 @@
+{
+  "resource_panel_idle_1.png": {
+    "population": {
+      "current": 14,
+      "max": 30
+    },
+    "idleVillagers": 1,
+    "resources": {
+      "food": 816,
+      "wood": 690,
+      "gold": 409,
+      "stone": 0
+    },
+    "villagersOnResource": {
+      "food": 7,
+      "wood": 5,
+      "gold": 0,
+      "stone": 0
+    }
+  },
+  "resource_panel_idle_8.png": {
+    "population": {
+      "current": 14,
+      "max": 30
+    },
+    "idleVillagers": 8,
+    "resources": {
+      "food": 850,
+      "wood": 700,
+      "gold": 421,
+      "stone": 0
+    },
+    "villagersOnResource": {
+      "food": 7,
+      "wood": 5,
+      "gold": 0,
+      "stone": 0
+    }
+  },
+  "resource_panel_food_8_idle_0.png": {
+    "population": {
+      "current": 15,
+      "max": 30
+    },
+    "idleVillagers": 0,
+    "resources": {
+      "food": 200,
+      "wood": 610,
+      "gold": 281,
+      "stone": 0
+    },
+    "villagersOnResource": {
+      "food": 8,
+      "wood": 0,
+      "gold": 0,
+      "stone": 0
+    }
+  }
+}
