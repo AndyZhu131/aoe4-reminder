@@ -1,0 +1,190 @@
+{
+  "version": 1,
+  "templatesRoot": "templates/tech",
+  "technologies": [
+    {
+      "key": "wheelbarrow",
+      "displayName": "Wheelbarrow",
+      "category": "economy",
+      "ageAvailable": "dark",
+      "building": "mill",
+      "templates": ["economy/wheelbarrow.png"]
+    },
+    {
+      "key": "survival_techniques",
+      "displayName": "Survival Techniques",
+      "category": "economy",
+      "ageAvailable": "dark",
+      "building": "mill",
+      "templates": ["economy/survival_techniques.png"]
+    },
+    {
+      "key": "horticulture",
+      "displayName": "Horticulture",
+      "category": "economy",
+      "ageAvailable": "feudal",
+      "building": "mill",
+      "templates": ["economy/horticulture.png"]
+    },
+    {
+      "key": "fertilization",
+      "displayName": "Fertilization",
+      "category": "economy",
+      "ageAvailable": "castle",
+      "building": "mill",
+      "templates": ["economy/fertilization.png"]
+    },
+    {
+      "key": "precision_crossbreeding",
+      "displayName": "Precision Crossbreeding",
+      "category": "economy",
+      "ageAvailable": "imperial",
+      "building": "mill",
+      "templates": ["economy/precision_crossbreeding.png"]
+    },
+    {
+      "key": "double_broadaxe",
+      "displayName": "Double Broadaxe",
+      "category": "economy",
+      "ageAvailable": "feudal",
+      "building": "lumber_camp",
+      "templates": ["economy/double_broadaxe.png"]
+    },
+    {
+      "key": "lumber_preservation",
+      "displayName": "Lumber Preservation",
+      "category": "economy",
+      "ageAvailable": "castle",
+      "building": "lumber_camp",
+      "templates": ["economy/lumber_preservation.png"]
+    },
+    {
+      "key": "crosscut_saw",
+      "displayName": "Crosscut Saw",
+      "category": "economy",
+      "ageAvailable": "imperial",
+      "building": "lumber_camp",
+      "templates": ["economy/crosscut_saw.png"]
+    },
+    {
+      "key": "specialized_pick",
+      "displayName": "Specialized Pick",
+      "category": "economy",
+      "ageAvailable": "feudal",
+      "building": "mining_camp",
+      "templates": ["economy/specialized_pick.png"]
+    },
+    {
+      "key": "acid_distillation",
+      "displayName": "Acid Distillation",
+      "category": "economy",
+      "ageAvailable": "castle",
+      "building": "mining_camp",
+      "templates": ["economy/acid_distillation.png"]
+    },
+    {
+      "key": "cupellation",
+      "displayName": "Cupellation",
+      "category": "economy",
+      "ageAvailable": "imperial",
+      "building": "mining_camp",
+      "templates": ["economy/cupellation.png"]
+    },
+    {
+      "key": "blacksmith_melee_attack_1",
+      "displayName": "Melee Attack I",
+      "category": "military",
+      "ageAvailable": "feudal",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_melee_attack_1.png"]
+    },
+    {
+      "key": "blacksmith_melee_attack_2",
+      "displayName": "Melee Attack II",
+      "category": "military",
+      "ageAvailable": "castle",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_melee_attack_2.png"]
+    },
+    {
+      "key": "blacksmith_melee_attack_3",
+      "displayName": "Melee Attack III",
+      "category": "military",
+      "ageAvailable": "imperial",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_melee_attack_3.png"]
+    },
+    {
+      "key": "blacksmith_ranged_attack_1",
+      "displayName": "Ranged Attack I",
+      "category": "military",
+      "ageAvailable": "feudal",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_ranged_attack_1.png"]
+    },
+    {
+      "key": "blacksmith_ranged_attack_2",
+      "displayName": "Ranged Attack II",
+      "category": "military",
+      "ageAvailable": "castle",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_ranged_attack_2.png"]
+    },
+    {
+      "key": "blacksmith_ranged_attack_3",
+      "displayName": "Ranged Attack III",
+      "category": "military",
+      "ageAvailable": "imperial",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_ranged_attack_3.png"]
+    },
+    {
+      "key": "blacksmith_melee_armor_1",
+      "displayName": "Melee Armor I",
+      "category": "military",
+      "ageAvailable": "feudal",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_melee_armor_1.png"]
+    },
+    {
+      "key": "blacksmith_melee_armor_2",
+      "displayName": "Melee Armor II",
+      "category": "military",
+      "ageAvailable": "castle",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_melee_armor_2.png"]
+    },
+    {
+      "key": "blacksmith_melee_armor_3",
+      "displayName": "Melee Armor III",
+      "category": "military",
+      "ageAvailable": "imperial",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_melee_armor_3.png"]
+    },
+    {
+      "key": "blacksmith_ranged_armor_1",
+      "displayName": "Ranged Armor I",
+      "category": "military",
+      "ageAvailable": "feudal",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_ranged_armor_1.png"]
+    },
+    {
+      "key": "blacksmith_ranged_armor_2",
+      "displayName": "Ranged Armor II",
+      "category": "military",
+      "ageAvailable": "castle",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_ranged_armor_2.png"]
+    },
+    {
+      "key": "blacksmith_ranged_armor_3",
+      "displayName": "Ranged Armor III",
+      "category": "military",
+      "ageAvailable": "imperial",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_ranged_armor_3.png"]
+    }
+  ]
+}
