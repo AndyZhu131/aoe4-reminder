@@ -5,20 +5,47 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from .common import grab_region_bgr, load_json, load_region
+from .common import (
+    grab_region_bgr,
+    load_json,
+    load_region,
+    run_windows_hotkey_session,
+)
 
 
 RESEARCH_READER = "tech-template-catalog"
 DEFAULT_TECH_CATALOG = "data/technologies.json"
 DEFAULT_TECH_TEMPLATE_ROOT = "templates/tech"
-RESEARCH_QUEUE_TILE_SIZE = 48
+RESEARCH_CAPTURE_RECTS = {
+    "top": (10, 10, 48, 46),
+    "bottom": (10, 66, 48, 46),
+}
+
+
+def extract_research_capture(source_path, output_path, row):
+    import cv2
+
+    frame = cv2.imread(str(source_path), cv2.IMREAD_COLOR)
+    if frame is None:
+        raise RuntimeError(f"could not read queue capture: {source_path}")
+
+    x, y, width, height = RESEARCH_CAPTURE_RECTS[row]
+    if x + width > frame.shape[1] or y + height > frame.shape[0]:
+        raise RuntimeError(
+            f"queue capture is too small for the {row} research slot: {source_path}"
+        )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if not cv2.imwrite(str(output_path), frame[y : y + height, x : x + width]):
+        raise RuntimeError(f"could not write research icon capture: {output_path}")
+
+    return {"x": x, "y": y, "width": width, "height": height}
 
 
 def crop_research_queue(frame):
-    # Debug captures may already contain the upper research half.
-    if frame.shape[0] <= RESEARCH_QUEUE_TILE_SIZE * 1.25:
-        return frame
-    return frame[: frame.shape[0] // 2, :]
+    # Research moves into the lower production row when no units are queued.
+    # Search the complete calibrated queue regardless of the current layout.
+    return frame
 
 def load_technology_catalog(catalog_path, template_root, categories):
     catalog = load_json(catalog_path)
@@ -76,7 +103,14 @@ def research_template_mask(template, border_mask_ratio):
     import numpy as np
 
     height, width = template.shape[:2]
-    mask = np.full((height, width), 255, dtype=np.uint8)
+    # The teal queue tile is common to every icon. Mask it out so matches are
+    # driven by the technology artwork rather than a mostly identical backdrop.
+    background = np.median(template.reshape(-1, 3), axis=0)
+    difference = np.max(
+        np.abs(template.astype(np.int16) - background.astype(np.int16)),
+        axis=2,
+    )
+    mask = np.where(difference >= 32, 255, 0).astype(np.uint8)
     border_x = round(width * border_mask_ratio)
     border_y = round(height * border_mask_ratio)
     if border_x > 0:
@@ -85,7 +119,10 @@ def research_template_mask(template, border_mask_ratio):
     if border_y > 0:
         mask[:border_y, :] = 0
         mask[height - border_y :, :] = 0
+    # Queue progress pips vary by research state and are not part of the icon.
+    mask[: round(height * 0.28), round(width * 0.58) :] = 0
     return cv2.merge([mask, mask, mask])
+
 
 def rect_center(rect):
     return (rect["x"] + rect["width"] / 2, rect["y"] + rect["height"] / 2)
@@ -308,7 +345,7 @@ def command_watch_research(args):
     else:
         rect = args.rect or load_region(Path(args.config), "globalQueue")
         print(
-            f"Watching research half of globalQueue region {rect}. Press Ctrl+C to stop.",
+            f"Watching both rows of globalQueue region {rect}. Press Ctrl+C to stop.",
             file=sys.stderr,
         )
 
@@ -344,3 +381,56 @@ def command_watch_research(args):
     except KeyboardInterrupt:
         print("Stopped research watcher.", file=sys.stderr)
         return 0
+
+
+def command_test_research_queue(args):
+    import cv2
+
+    output_dir = Path(args.output_dir)
+    technologies, missing_templates = load_technology_catalog(
+        Path(args.catalog),
+        args.template_root,
+        args.categories,
+    )
+    if not args.show_missing_templates:
+        missing_templates = []
+
+    rect = args.rect or load_region(Path(args.config), "globalQueue")
+
+    print(
+        f"Research queue test ready for globalQueue region {rect}. Press Ctrl+Alt+S "
+        "to capture and classify it. Press Ctrl+C to stop.",
+        file=sys.stderr,
+    )
+
+    def identify_queue_capture():
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
+        source_path = output_dir / f"globalQueue-{timestamp}.png"
+        debug_path = output_dir / f"globalQueue-{timestamp}-matches.png"
+        frame = crop_research_queue(grab_region_bgr(rect))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(source_path), frame)
+
+        started = time.perf_counter()
+        result = match_research_technologies(frame, technologies, args)
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        save_research_debug_image(frame, result, debug_path)
+
+        payload = research_payload(result, elapsed_ms, missing_templates)
+        payload["capture"] = "globalQueue"
+        payload["region"] = rect
+        payload["sourceImage"] = str(source_path)
+        payload["debugImage"] = str(debug_path)
+        print(json.dumps(payload, indent=2), flush=True)
+
+    def identify_on_hotkey():
+        try:
+            identify_queue_capture()
+        except Exception as exc:
+            print(f"research queue test failed: {exc}", file=sys.stderr)
+
+    try:
+        run_windows_hotkey_session(identify_on_hotkey)
+    except KeyboardInterrupt:
+        print("Stopped research queue test.", file=sys.stderr)
+    return 0

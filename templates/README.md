@@ -16,7 +16,7 @@ Before matching the villager artwork, the reader checks the fixed dark-blue prod
 
 The calibrated global queue contains research and production. Villager detection reads only its bottom half, which contains the production queue.
 
-Research detection reads the top half of the same calibrated `globalQueue` region. Unlike villager detection, it scans a catalog of economy and military technology templates and returns every active research icon it can classify. The catalog lives at:
+Research detection reads both rows of the same calibrated `globalQueue` region, because research moves into the production row when no units are queued. Unlike villager detection, it scans a catalog of economy and military technology templates and returns every active research icon it can classify. The catalog lives at:
 
 ```text
 data/technologies.json

@@ -132,12 +132,56 @@ def wait_before_capture(delay):
         if remaining > 0:
             print(f"{remaining:.0f}...", file=sys.stderr)
 
+
+def run_windows_hotkey_session(callback):
+    import ctypes
+    import os
+    from ctypes import wintypes
+
+    if os.name != "nt":
+        raise RuntimeError("the Ctrl+Alt+S capture session is supported on Windows only")
+
+    hotkey_id = 1
+    modifiers = 0x0001 | 0x0002  # MOD_ALT | MOD_CONTROL
+    virtual_key_s = 0x53
+    wm_hotkey = 0x0312
+    wm_quit = 0x0012
+    pm_remove = 0x0001
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+
+    if not user32.RegisterHotKey(None, hotkey_id, modifiers, virtual_key_s):
+        error_code = ctypes.get_last_error()
+        raise RuntimeError(
+            "could not register Ctrl+Alt+S. It may already be assigned by another app "
+            f"(Windows error {error_code})."
+        )
+
+    message = wintypes.MSG()
+    try:
+        while True:
+            while user32.PeekMessageW(
+                ctypes.byref(message),
+                None,
+                0,
+                0,
+                pm_remove,
+            ):
+                if message.message == wm_quit:
+                    return
+                if message.message == wm_hotkey and message.wParam == hotkey_id:
+                    callback()
+            # A non-blocking loop lets the interpreter process Ctrl+C reliably.
+            time.sleep(0.05)
+    finally:
+        user32.UnregisterHotKey(None, hotkey_id)
+
 def capture_region_to_png(rect, output_path):
     import cv2
 
     frame = grab_region_bgr(rect)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(output_path), frame)
+
 
 def grab_region_bgr(rect):
     import cv2

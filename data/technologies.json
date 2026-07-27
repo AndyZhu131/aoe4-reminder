@@ -4,187 +4,215 @@
   "technologies": [
     {
       "key": "wheelbarrow",
-      "displayName": "Wheelbarrow",
+      "displayName": "wheelbarrow",
       "category": "economy",
       "ageAvailable": "dark",
       "building": "mill",
       "templates": ["economy/wheelbarrow.png"]
     },
     {
-      "key": "survival_techniques",
-      "displayName": "Survival Techniques",
+      "key": "survivalTechnique",
+      "displayName": "survivalTechnique",
       "category": "economy",
       "ageAvailable": "dark",
       "building": "mill",
       "templates": ["economy/survival_techniques.png"]
     },
     {
-      "key": "horticulture",
-      "displayName": "Horticulture",
+      "key": "food_1",
+      "displayName": "food_1",
       "category": "economy",
       "ageAvailable": "feudal",
       "building": "mill",
       "templates": ["economy/horticulture.png"]
     },
     {
-      "key": "fertilization",
-      "displayName": "Fertilization",
+      "key": "food_2",
+      "displayName": "food_2",
       "category": "economy",
       "ageAvailable": "castle",
       "building": "mill",
       "templates": ["economy/fertilization.png"]
     },
     {
-      "key": "precision_crossbreeding",
-      "displayName": "Precision Crossbreeding",
+      "key": "food_3",
+      "displayName": "food_3",
       "category": "economy",
       "ageAvailable": "imperial",
       "building": "mill",
       "templates": ["economy/precision_crossbreeding.png"]
     },
     {
-      "key": "double_broadaxe",
-      "displayName": "Double Broadaxe",
+      "key": "wood_1",
+      "displayName": "wood_1",
       "category": "economy",
       "ageAvailable": "feudal",
       "building": "lumber_camp",
       "templates": ["economy/double_broadaxe.png"]
     },
     {
-      "key": "lumber_preservation",
-      "displayName": "Lumber Preservation",
+      "key": "wood_2",
+      "displayName": "wood_2",
       "category": "economy",
       "ageAvailable": "castle",
       "building": "lumber_camp",
       "templates": ["economy/lumber_preservation.png"]
     },
     {
-      "key": "crosscut_saw",
-      "displayName": "Crosscut Saw",
+      "key": "wood_3",
+      "displayName": "wood_3",
       "category": "economy",
       "ageAvailable": "imperial",
       "building": "lumber_camp",
       "templates": ["economy/crosscut_saw.png"]
     },
     {
-      "key": "specialized_pick",
-      "displayName": "Specialized Pick",
+      "key": "mine_1",
+      "displayName": "mine_1",
       "category": "economy",
       "ageAvailable": "feudal",
       "building": "mining_camp",
       "templates": ["economy/specialized_pick.png"]
     },
     {
-      "key": "acid_distillation",
-      "displayName": "Acid Distillation",
+      "key": "mine_2",
+      "displayName": "mine_2",
       "category": "economy",
       "ageAvailable": "castle",
       "building": "mining_camp",
       "templates": ["economy/acid_distillation.png"]
     },
     {
-      "key": "cupellation",
-      "displayName": "Cupellation",
+      "key": "mine_3",
+      "displayName": "mine_3",
       "category": "economy",
       "ageAvailable": "imperial",
       "building": "mining_camp",
       "templates": ["economy/cupellation.png"]
     },
     {
-      "key": "blacksmith_melee_attack_1",
-      "displayName": "Melee Attack I",
+      "key": "melee_atk_1",
+      "displayName": "melee_atk_1",
       "category": "military",
       "ageAvailable": "feudal",
       "building": "blacksmith",
       "templates": ["military/blacksmith_melee_attack_1.png"]
     },
     {
-      "key": "blacksmith_melee_attack_2",
-      "displayName": "Melee Attack II",
+      "key": "melee_atk_2",
+      "displayName": "melee_atk_2",
       "category": "military",
       "ageAvailable": "castle",
       "building": "blacksmith",
       "templates": ["military/blacksmith_melee_attack_2.png"]
     },
     {
-      "key": "blacksmith_melee_attack_3",
-      "displayName": "Melee Attack III",
+      "key": "melee_atk_3",
+      "displayName": "melee_atk_3",
       "category": "military",
       "ageAvailable": "imperial",
       "building": "blacksmith",
       "templates": ["military/blacksmith_melee_attack_3.png"]
     },
     {
-      "key": "blacksmith_ranged_attack_1",
-      "displayName": "Ranged Attack I",
+      "key": "range_atk_1",
+      "displayName": "range_atk_1",
       "category": "military",
       "ageAvailable": "feudal",
       "building": "blacksmith",
       "templates": ["military/blacksmith_ranged_attack_1.png"]
     },
     {
-      "key": "blacksmith_ranged_attack_2",
-      "displayName": "Ranged Attack II",
+      "key": "range_atk_2",
+      "displayName": "range_atk_2",
       "category": "military",
       "ageAvailable": "castle",
       "building": "blacksmith",
       "templates": ["military/blacksmith_ranged_attack_2.png"]
     },
     {
-      "key": "blacksmith_ranged_attack_3",
-      "displayName": "Ranged Attack III",
+      "key": "range_atk_3",
+      "displayName": "range_atk_3",
       "category": "military",
       "ageAvailable": "imperial",
       "building": "blacksmith",
       "templates": ["military/blacksmith_ranged_attack_3.png"]
     },
     {
-      "key": "blacksmith_melee_armor_1",
-      "displayName": "Melee Armor I",
+      "key": "melee_def_1",
+      "displayName": "melee_def_1",
       "category": "military",
       "ageAvailable": "feudal",
       "building": "blacksmith",
       "templates": ["military/blacksmith_melee_armor_1.png"]
     },
     {
-      "key": "blacksmith_melee_armor_2",
-      "displayName": "Melee Armor II",
+      "key": "melee_def_2",
+      "displayName": "melee_def_2",
       "category": "military",
       "ageAvailable": "castle",
       "building": "blacksmith",
       "templates": ["military/blacksmith_melee_armor_2.png"]
     },
     {
-      "key": "blacksmith_melee_armor_3",
-      "displayName": "Melee Armor III",
+      "key": "melee_def_3",
+      "displayName": "melee_def_3",
       "category": "military",
       "ageAvailable": "imperial",
       "building": "blacksmith",
       "templates": ["military/blacksmith_melee_armor_3.png"]
     },
     {
-      "key": "blacksmith_ranged_armor_1",
-      "displayName": "Ranged Armor I",
+      "key": "range_def_1",
+      "displayName": "range_def_1",
       "category": "military",
       "ageAvailable": "feudal",
       "building": "blacksmith",
       "templates": ["military/blacksmith_ranged_armor_1.png"]
     },
     {
-      "key": "blacksmith_ranged_armor_2",
-      "displayName": "Ranged Armor II",
+      "key": "range_def_2",
+      "displayName": "range_def_2",
       "category": "military",
       "ageAvailable": "castle",
       "building": "blacksmith",
       "templates": ["military/blacksmith_ranged_armor_2.png"]
     },
     {
-      "key": "blacksmith_ranged_armor_3",
-      "displayName": "Ranged Armor III",
+      "key": "range_def_3",
+      "displayName": "range_def_3",
       "category": "military",
       "ageAvailable": "imperial",
       "building": "blacksmith",
       "templates": ["military/blacksmith_ranged_armor_3.png"]
+    },
+    {
+      "key": "horseLife",
+      "displayName": "horseLife",
+      "category": "military",
+      "building": null,
+      "templates": ["military/horse_life.png"]
+    },
+    {
+      "key": "InfantryLife",
+      "displayName": "InfantryLife",
+      "category": "military",
+      "building": null,
+      "templates": ["military/infantry_life.png"]
+    },
+    {
+      "key": "militaryAcademy",
+      "displayName": "militaryAcademy",
+      "category": "military",
+      "building": null,
+      "templates": ["military/military_academy.png"]
+    },
+    {
+      "key": "siege",
+      "displayName": "siege",
+      "category": "military",
+      "building": null,
+      "templates": ["military/siege.png"]
     }
   ]
 }

@@ -13,13 +13,17 @@ from aoe4.common import (
     parse_rect,
     parse_scales,
     resolve_rect,
+    wait_before_capture,
+    run_windows_hotkey_session,
 )
 from aoe4.resources import command_test_resources, command_watch_resources
 from aoe4.tech import (
     DEFAULT_TECH_CATALOG,
     DEFAULT_TECH_TEMPLATE_ROOT,
     command_match_research,
+    command_test_research_queue,
     command_watch_research,
+    extract_research_capture,
     parse_categories,
 )
 from aoe4.villager import (
@@ -38,6 +42,59 @@ def command_capture(args):
     capture_region_to_png(rect, source_path)
     print(f"Captured {args.region} {rect} -> {source_path}", file=sys.stderr)
     print(json.dumps({"region": args.region, "source": str(source_path)}, indent=2))
+    return 0
+
+
+def capture_queue_once(args):
+    output_dir = Path(args.output_dir)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
+    rect = args.rect or resolve_rect(args)
+    source_path = output_dir / f"globalQueue-{timestamp}.png"
+    capture_region_to_png(rect, source_path)
+    research_path = output_dir / f"research-icon-{timestamp}.png"
+    research_rect = extract_research_capture(
+        source_path,
+        research_path,
+        args.research_row,
+    )
+    print(f"Captured globalQueue {rect} -> {source_path}", file=sys.stderr)
+    print(
+        f"Captured {args.research_row} research slot {research_rect} -> {research_path}",
+        file=sys.stderr,
+    )
+    return {
+        "region": "globalQueue",
+        "source": str(source_path),
+        "researchIcon": {
+            "source": str(research_path),
+            "row": args.research_row,
+            "rect": research_rect,
+        },
+    }
+
+
+def command_capture_queue(args):
+    if args.once:
+        wait_before_capture(args.delay)
+        print(json.dumps(capture_queue_once(args), indent=2))
+        return 0
+
+    print(
+        "Queue capture session ready. Press Ctrl+Alt+S to save a queue and research-icon "
+        "capture. Press Ctrl+C to stop.",
+        file=sys.stderr,
+    )
+
+    def capture_on_hotkey():
+        try:
+            print(json.dumps(capture_queue_once(args), indent=2))
+        except Exception as exc:
+            print(f"capture failed: {exc}", file=sys.stderr)
+
+    try:
+        run_windows_hotkey_session(capture_on_hotkey)
+    except KeyboardInterrupt:
+        print("Stopped queue capture session.", file=sys.stderr)
     return 0
 
 def command_match(args):
@@ -148,6 +205,32 @@ def build_parser():
     add_region_args(capture)
     capture.set_defaults(func=command_capture)
 
+    capture_queue = subparsers.add_parser(
+        "capture-queue",
+        help="capture globalQueue and its research icon with Ctrl+Alt+S",
+    )
+    capture_queue.add_argument("--config", default="config/calibration.2560x1440.json")
+    capture_queue.add_argument("--rect", type=parse_rect)
+    capture_queue.add_argument("--output-dir", default="captures/queue")
+    capture_queue.add_argument(
+        "--research-row",
+        choices=("top", "bottom"),
+        default="top",
+        help="row containing the research icon to extract after the queue capture",
+    )
+    capture_queue.add_argument(
+        "--delay",
+        type=float,
+        default=3.0,
+        help="seconds to wait before a --once screenshot",
+    )
+    capture_queue.add_argument(
+        "--once",
+        action="store_true",
+        help="capture once immediately after --delay instead of starting the hotkey session",
+    )
+    capture_queue.set_defaults(region="globalQueue", func=command_capture_queue)
+
     match = subparsers.add_parser(
         "match", help="capture or load one region and compare it to an icon template"
     )
@@ -175,7 +258,7 @@ def build_parser():
 
     match_research = subparsers.add_parser(
         "match-research",
-        help="classify active common research icons in the top half of globalQueue",
+        help="classify active common research icons in either globalQueue row",
     )
     add_research_args(match_research)
     match_research.set_defaults(func=command_match_research)
@@ -188,6 +271,19 @@ def build_parser():
     watch_research.add_argument("--interval", type=float, default=0.5)
     watch_research.add_argument("--once", action="store_true")
     watch_research.set_defaults(func=command_watch_research)
+
+    test_research_queue = subparsers.add_parser(
+        "test-research-queue",
+        aliases=["test-research-clipboard"],
+        help="capture and classify the calibrated globalQueue with Ctrl+Alt+S",
+    )
+    add_research_args(test_research_queue)
+    test_research_queue.set_defaults(
+        region="globalQueue",
+        output_dir="captures/research-queue",
+        threshold=0.95,
+        func=command_test_research_queue,
+    )
 
     watch_resources = subparsers.add_parser(
         "watch-resources",
