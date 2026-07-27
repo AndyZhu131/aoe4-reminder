@@ -1,0 +1,218 @@
+{
+  "version": 1,
+  "templatesRoot": "templates/tech",
+  "technologies": [
+    {
+      "key": "wheelbarrow",
+      "displayName": "wheelbarrow",
+      "category": "economy",
+      "ageAvailable": "dark",
+      "building": "mill",
+      "templates": ["economy/wheelbarrow.png"]
+    },
+    {
+      "key": "survivalTechnique",
+      "displayName": "survivalTechnique",
+      "category": "economy",
+      "ageAvailable": "dark",
+      "building": "mill",
+      "templates": ["economy/survival_techniques.png"]
+    },
+    {
+      "key": "food_1",
+      "displayName": "food_1",
+      "category": "economy",
+      "ageAvailable": "feudal",
+      "building": "mill",
+      "templates": ["economy/horticulture.png"]
+    },
+    {
+      "key": "food_2",
+      "displayName": "food_2",
+      "category": "economy",
+      "ageAvailable": "castle",
+      "building": "mill",
+      "templates": ["economy/fertilization.png"]
+    },
+    {
+      "key": "food_3",
+      "displayName": "food_3",
+      "category": "economy",
+      "ageAvailable": "imperial",
+      "building": "mill",
+      "templates": ["economy/precision_crossbreeding.png"]
+    },
+    {
+      "key": "wood_1",
+      "displayName": "wood_1",
+      "category": "economy",
+      "ageAvailable": "feudal",
+      "building": "lumber_camp",
+      "templates": ["economy/double_broadaxe.png"]
+    },
+    {
+      "key": "wood_2",
+      "displayName": "wood_2",
+      "category": "economy",
+      "ageAvailable": "castle",
+      "building": "lumber_camp",
+      "templates": ["economy/lumber_preservation.png"]
+    },
+    {
+      "key": "wood_3",
+      "displayName": "wood_3",
+      "category": "economy",
+      "ageAvailable": "imperial",
+      "building": "lumber_camp",
+      "templates": ["economy/crosscut_saw.png"]
+    },
+    {
+      "key": "mine_1",
+      "displayName": "mine_1",
+      "category": "economy",
+      "ageAvailable": "feudal",
+      "building": "mining_camp",
+      "templates": ["economy/specialized_pick.png"]
+    },
+    {
+      "key": "mine_2",
+      "displayName": "mine_2",
+      "category": "economy",
+      "ageAvailable": "castle",
+      "building": "mining_camp",
+      "templates": ["economy/acid_distillation.png"]
+    },
+    {
+      "key": "mine_3",
+      "displayName": "mine_3",
+      "category": "economy",
+      "ageAvailable": "imperial",
+      "building": "mining_camp",
+      "templates": ["economy/cupellation.png"]
+    },
+    {
+      "key": "melee_atk_1",
+      "displayName": "melee_atk_1",
+      "category": "military",
+      "ageAvailable": "feudal",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_melee_attack_1.png"]
+    },
+    {
+      "key": "melee_atk_2",
+      "displayName": "melee_atk_2",
+      "category": "military",
+      "ageAvailable": "castle",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_melee_attack_2.png"]
+    },
+    {
+      "key": "melee_atk_3",
+      "displayName": "melee_atk_3",
+      "category": "military",
+      "ageAvailable": "imperial",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_melee_attack_3.png"]
+    },
+    {
+      "key": "range_atk_1",
+      "displayName": "range_atk_1",
+      "category": "military",
+      "ageAvailable": "feudal",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_ranged_attack_1.png"]
+    },
+    {
+      "key": "range_atk_2",
+      "displayName": "range_atk_2",
+      "category": "military",
+      "ageAvailable": "castle",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_ranged_attack_2.png"]
+    },
+    {
+      "key": "range_atk_3",
+      "displayName": "range_atk_3",
+      "category": "military",
+      "ageAvailable": "imperial",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_ranged_attack_3.png"]
+    },
+    {
+      "key": "melee_def_1",
+      "displayName": "melee_def_1",
+      "category": "military",
+      "ageAvailable": "feudal",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_melee_armor_1.png"]
+    },
+    {
+      "key": "melee_def_2",
+      "displayName": "melee_def_2",
+      "category": "military",
+      "ageAvailable": "castle",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_melee_armor_2.png"]
+    },
+    {
+      "key": "melee_def_3",
+      "displayName": "melee_def_3",
+      "category": "military",
+      "ageAvailable": "imperial",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_melee_armor_3.png"]
+    },
+    {
+      "key": "range_def_1",
+      "displayName": "range_def_1",
+      "category": "military",
+      "ageAvailable": "feudal",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_ranged_armor_1.png"]
+    },
+    {
+      "key": "range_def_2",
+      "displayName": "range_def_2",
+      "category": "military",
+      "ageAvailable": "castle",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_ranged_armor_2.png"]
+    },
+    {
+      "key": "range_def_3",
+      "displayName": "range_def_3",
+      "category": "military",
+      "ageAvailable": "imperial",
+      "building": "blacksmith",
+      "templates": ["military/blacksmith_ranged_armor_3.png"]
+    },
+    {
+      "key": "horseLife",
+      "displayName": "horseLife",
+      "category": "military",
+      "building": null,
+      "templates": ["military/horse_life.png"]
+    },
+    {
+      "key": "InfantryLife",
+      "displayName": "InfantryLife",
+      "category": "military",
+      "building": null,
+      "templates": ["military/infantry_life.png"]
+    },
+    {
+      "key": "militaryAcademy",
+      "displayName": "militaryAcademy",
+      "category": "military",
+      "building": null,
+      "templates": ["military/military_academy.png"]
+    },
+    {
+      "key": "siege",
+      "displayName": "siege",
+      "category": "military",
+      "building": null,
+      "templates": ["military/siege.png"]
+    }
+  ]
+}
