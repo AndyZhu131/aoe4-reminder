@@ -47,7 +47,7 @@ def crop_research_queue(frame):
     # Search the complete calibrated queue regardless of the current layout.
     return frame
 
-def load_technology_catalog(catalog_path, template_root, categories):
+def load_technology_catalog(catalog_path, template_root, categories, civilizations=None):
     catalog = load_json(catalog_path)
     if catalog is None:
         raise RuntimeError(f"technology catalog not found: {catalog_path}")
@@ -57,6 +57,7 @@ def load_technology_catalog(catalog_path, template_root, categories):
         root = catalog_path.parent.parent / root
 
     category_filter = set(categories or [])
+    civilization_filter = {civilization.lower() for civilization in civilizations or []}
     technologies = []
     missing_templates = []
 
@@ -64,6 +65,9 @@ def load_technology_catalog(catalog_path, template_root, categories):
         if not entry.get("enabled", True):
             continue
         if category_filter and entry.get("category") not in category_filter:
+            continue
+        entry_civilization = entry.get("civilization", "sis").lower()
+        if civilization_filter and entry_civilization not in civilization_filter:
             continue
 
         templates = []
@@ -84,6 +88,7 @@ def load_technology_catalog(catalog_path, template_root, categories):
                 "key": entry["key"],
                 "displayName": entry.get("displayName", entry["key"]),
                 "category": entry.get("category", "unknown"),
+                "civilization": entry_civilization,
                 "ageAvailable": entry.get("ageAvailable"),
                 "building": entry.get("building"),
                 "templates": templates,
@@ -307,6 +312,7 @@ def command_match_research(args):
         Path(args.catalog),
         args.template_root,
         args.categories,
+        [args.civilization],
     )
 
     started = time.perf_counter()
@@ -338,6 +344,7 @@ def command_watch_research(args):
         Path(args.catalog),
         args.template_root,
         args.categories,
+        [args.civilization],
     )
 
     if args.source_image:
@@ -391,6 +398,7 @@ def command_test_research_queue(args):
         Path(args.catalog),
         args.template_root,
         args.categories,
+        [args.civilization],
     )
     if not args.show_missing_templates:
         missing_templates = []
