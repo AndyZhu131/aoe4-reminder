@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "civilization": "sis",
+  "age": "age_2",
+  "villagerProductionActive": false,
+  "researchedTechnologies": ["wheelbarrow"],
+  "inProgressTechnologies": ["wood_1"]
+}

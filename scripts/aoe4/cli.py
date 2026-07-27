@@ -6,6 +6,14 @@ from pathlib import Path
 
 from aoe4.age import command_capture_age, command_test_age, command_watch_age
 from aoe4.calibration import command_calibrate
+from aoe4.overlay import (
+    OVERLAY_AGES,
+    OVERLAY_VILLAGER_STATES,
+    command_write_overlay_state,
+    parse_technology_keys,
+)
+from aoe4.session import add_session_args, command_watch_session
+from aoe4.technology_catalog import add_inject_technologies_args, command_inject_technologies
 from aoe4.common import (
     REGIONS,
     capture_region_to_png,
@@ -155,6 +163,7 @@ def add_research_args(parser):
     parser.add_argument("--rect", type=parse_rect)
     parser.add_argument("--catalog", default=DEFAULT_TECH_CATALOG)
     parser.add_argument("--template-root", default=DEFAULT_TECH_TEMPLATE_ROOT)
+    parser.add_argument("--civilization", default="sis")
     parser.add_argument(
         "--categories",
         type=parse_categories,
@@ -287,6 +296,47 @@ def build_parser():
     watch_age.add_argument("--source-image")
     watch_age.add_argument("--once", action="store_true")
     watch_age.set_defaults(func=command_watch_age)
+
+    overlay_state = subparsers.add_parser(
+        "overlay-state",
+        help="write the current reminder state consumed by the desktop overlay",
+    )
+    overlay_state.add_argument("--output", default="runtime/overlay-state.json")
+    overlay_state.add_argument("--civilization", default="sis")
+    overlay_state.add_argument("--age", choices=OVERLAY_AGES, default="unknown")
+    overlay_state.add_argument(
+        "--villager-production",
+        choices=OVERLAY_VILLAGER_STATES,
+        default="unknown",
+    )
+    overlay_state.add_argument(
+        "--researched",
+        type=parse_technology_keys,
+        default=[],
+        help="comma-separated technology keys",
+    )
+    overlay_state.add_argument(
+        "--in-progress",
+        type=parse_technology_keys,
+        default=[],
+        help="comma-separated technology keys",
+    )
+    overlay_state.set_defaults(func=command_write_overlay_state)
+
+    inject_technologies = subparsers.add_parser(
+        "inject-technologies",
+        aliases=["sync-tech-catalog"],
+        help="sync the technology catalog from the template directory structure",
+    )
+    add_inject_technologies_args(inject_technologies)
+    inject_technologies.set_defaults(func=command_inject_technologies)
+
+    watch_session = subparsers.add_parser(
+        "watch-session",
+        help="gate reminder recognition behind a synchronized game timer",
+    )
+    add_session_args(watch_session)
+    watch_session.set_defaults(func=command_watch_session)
 
     match = subparsers.add_parser(
         "match", help="capture or load one region and compare it to an icon template"

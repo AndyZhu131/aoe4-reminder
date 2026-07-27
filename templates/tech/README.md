@@ -4,12 +4,31 @@ Put cropped active-research queue icons here. The detector scans both rows of
 the calibrated `globalQueue` region and classifies every matching template from
 `data/technologies.json`.
 
-Initial folders:
+Current SIS folders:
 
 ```text
-templates/tech/economy/
-templates/tech/military/
+templates/tech/economy/age1/
+templates/tech/economy/age2/
+templates/tech/military/age2/
 ```
+
+The catalog records a `civilization` for every technology. The current set is
+`sis`. To add a future civilization, use a civilization-first namespace:
+
+```text
+templates/tech/<civilization>/economy/ageN/<icon>.png
+templates/tech/<civilization>/military/ageN/<icon>.png
+```
+
+After adding or moving template files, regenerate the catalog:
+
+```sh
+python scripts/aoe4_assistant.py inject-technologies --civilization sis
+```
+
+The injector derives category, age, and template path from the directory. It
+preserves existing keys where a filename is already known and uses the filename
+as the key for newly added technologies.
 
 Recommended capture flow:
 
@@ -31,8 +50,8 @@ x=10, y=8, width=48, height=44
 Save the crop to the catalog path, for example:
 
 ```text
-templates/tech/economy/wheelbarrow.png
-templates/tech/military/blacksmith_melee_attack_1.png
+templates/tech/economy/age1/wheelbarrow.png
+templates/tech/military/age2/blacksmith_melee_attack_1.png
 ```
 
 When production is empty, research moves into the first production tile at
