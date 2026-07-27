@@ -4,6 +4,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from aoe4.age import command_capture_age, command_test_age, command_watch_age
 from aoe4.calibration import command_calibrate
 from aoe4.common import (
     REGIONS,
@@ -230,6 +231,62 @@ def build_parser():
         help="capture once immediately after --delay instead of starting the hotkey session",
     )
     capture_queue.set_defaults(region="globalQueue", func=command_capture_queue)
+
+    capture_age = subparsers.add_parser(
+        "capture-age",
+        help="capture the calibrated ageAndTimer region with Ctrl+Alt+S",
+    )
+    capture_age.add_argument("--config", default="config/calibration.2560x1440.json")
+    capture_age.add_argument("--rect", type=parse_rect)
+    capture_age.add_argument(
+        "--monitor",
+        type=int,
+        help="physical monitor to capture; defaults to the monitor stored in --config",
+    )
+    capture_age.add_argument(
+        "--use-calibrated-region",
+        action="store_true",
+        help="use the saved ageAndTimer rectangle instead of the automatic top-center crop",
+    )
+    capture_age.add_argument("--output-dir", default="captures/age")
+    capture_age.add_argument(
+        "--delay",
+        type=float,
+        default=3.0,
+        help="seconds to wait before a --once screenshot",
+    )
+    capture_age.add_argument(
+        "--once",
+        action="store_true",
+        help="capture once immediately after --delay instead of starting the hotkey session",
+    )
+    capture_age.set_defaults(region="ageAndTimer", func=command_capture_age)
+
+    test_age = subparsers.add_parser(
+        "test-age",
+        help="run age icon and timer recognition against labeled captures",
+    )
+    test_age.add_argument("--fixture-dir", default="captures/age")
+    test_age.add_argument("--age-scale", type=float, default=8.0)
+    test_age.add_argument("--timer-scale", type=float, default=4.0)
+    test_age.add_argument("--tesseract-cmd")
+    test_age.set_defaults(func=command_test_age)
+
+    watch_age = subparsers.add_parser(
+        "watch-age",
+        help="read the current age marker and game timer repeatedly",
+    )
+    watch_age.add_argument("--config", default="config/calibration.2560x1440.json")
+    watch_age.add_argument("--rect", type=parse_rect)
+    watch_age.add_argument("--monitor", type=int)
+    watch_age.add_argument("--use-calibrated-region", action="store_true")
+    watch_age.add_argument("--age-scale", type=float, default=8.0)
+    watch_age.add_argument("--timer-scale", type=float, default=4.0)
+    watch_age.add_argument("--tesseract-cmd")
+    watch_age.add_argument("--interval", type=float, default=1.0)
+    watch_age.add_argument("--source-image")
+    watch_age.add_argument("--once", action="store_true")
+    watch_age.set_defaults(func=command_watch_age)
 
     match = subparsers.add_parser(
         "match", help="capture or load one region and compare it to an icon template"

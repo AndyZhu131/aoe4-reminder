@@ -22,6 +22,31 @@ top research slot under `captures/queue/`. When production is empty, use
 
 For a one-shot capture with a short countdown, add `--once --delay 3`.
 
+Capture the calibrated age icon and timer for reader examples:
+
+```sh
+python scripts/aoe4_assistant.py capture-age
+```
+
+Press `Ctrl+Alt+S` to save each top-center HUD capture under `captures/age/`.
+The automatic crop is the top 20% of the selected monitor and 100 px wide at
+2048 px screen width. Use `--use-calibrated-region` to fall back to the saved
+`ageAndTimer` rectangle.
+
+Age recognition OCRs the fixed Roman-numeral location (`I` through `IV`) and
+timer location inside this crop. Run it against labeled captures named
+`MM-SS-AGE.png`:
+
+```sh
+python scripts/aoe4_assistant.py test-age
+```
+
+Read the current automatic top-center capture once:
+
+```sh
+python scripts/aoe4_assistant.py watch-age --once
+```
+
 For a live recognition test, press `Ctrl+Alt+S` to capture and classify the
 entire calibrated `globalQueue` region:
 
