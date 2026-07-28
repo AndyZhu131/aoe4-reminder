@@ -17,13 +17,18 @@ from .resources import read_text_with_tesseract
 
 
 AGE_READER = "fixed-position-roman-template"
-AGE_CAPTURE_REFERENCE_SIZE = (125, 288)
-AGE_ROMAN_RECT = (38, 40, 50, 58)
+# Fractions of the captured age/timer region, not fixed screen pixels.
+AGE_ROMAN_RECT = (38 / 125, 40 / 288, 50 / 125, 58 / 288)
+CALIBRATED_AGE_ROMAN_RECT = (52 / 155, 0.0, 70 / 155, 38 / 146)
 AGE_TEMPLATE_DIR = Path(__file__).resolve().parents[2] / "templates" / "age"
 AGE_TEMPLATE_THRESHOLD = 0.18
 TIMER_RECTS = (
-    ("standard", (32, 142, 64, 28)),
-    ("ageUp", (32, 200, 64, 29)),
+    ("standard", (32 / 125, 142 / 288, 64 / 125, 28 / 288)),
+    ("ageUp", (32 / 125, 200 / 288, 64 / 125, 29 / 288)),
+)
+CALIBRATED_TIMER_RECTS = (
+    ("standard", (45 / 155, 60 / 146, 70 / 155, 40 / 146)),
+    ("ageUp", (45 / 155, 102 / 146, 70 / 155, 40 / 146)),
 )
 AGE_ROMAN_TO_LABEL = {
     "I": "age_1",
@@ -62,7 +67,12 @@ def resolve_age_timer_rect(args):
     if args.rect:
         return args.rect
     if args.use_calibrated_region:
-        return load_region(Path(args.config), "ageAndTimer")
+        config_path = Path(args.config)
+        config = load_json(config_path) or {}
+        monitor_index = args.monitor
+        if monitor_index is None:
+            monitor_index = int(config.get("monitor", 1))
+        return load_region(config_path, "ageAndTimer", load_monitor(monitor_index))
 
     config = load_json(Path(args.config)) or {}
     monitor_index = args.monitor
@@ -109,20 +119,27 @@ def command_capture_age(args):
     return 0
 
 
-def crop_reference_rect(frame, reference_rect):
-    reference_width, reference_height = AGE_CAPTURE_REFERENCE_SIZE
+def age_capture_layout(frame):
     frame_height, frame_width = frame.shape[:2]
-    reference_x, reference_y, reference_w, reference_h = reference_rect
+    if frame_width / max(1, frame_height) >= 0.75:
+        return CALIBRATED_AGE_ROMAN_RECT, CALIBRATED_TIMER_RECTS
+    return AGE_ROMAN_RECT, TIMER_RECTS
 
-    x = max(0, min(round(reference_x * frame_width / reference_width), frame_width - 1))
-    y = max(0, min(round(reference_y * frame_height / reference_height), frame_height - 1))
-    width = max(1, min(round(reference_w * frame_width / reference_width), frame_width - x))
-    height = max(1, min(round(reference_h * frame_height / reference_height), frame_height - y))
+
+def crop_reference_rect(frame, relative_rect):
+    frame_height, frame_width = frame.shape[:2]
+    relative_x, relative_y, relative_w, relative_h = relative_rect
+
+    x = max(0, min(round(relative_x * frame_width), frame_width - 1))
+    y = max(0, min(round(relative_y * frame_height), frame_height - 1))
+    width = max(1, min(round(relative_w * frame_width), frame_width - x))
+    height = max(1, min(round(relative_h * frame_height), frame_height - y))
     return frame[y : y + height, x : x + width]
 
 
 def crop_age_roman(frame):
-    return crop_reference_rect(frame, AGE_ROMAN_RECT)
+    roman_rect, _timer_rects = age_capture_layout(frame)
+    return crop_reference_rect(frame, roman_rect)
 
 
 def crop_timer_area(frame, reference_rect):
@@ -260,31 +277,52 @@ def parse_timer(raw_text):
 
 def read_game_timer(frame, args):
     attempts = []
-    for position, timer_rect in TIMER_RECTS:
+    _roman_rect, timer_rects = age_capture_layout(frame)
+    for position, timer_rect in timer_rects:
         timer_area = crop_timer_area(frame, timer_rect)
+        raw_text = read_text_with_tesseract(
+            timer_area,
+            args.tesseract_cmd,
+            13,
+            "0123456789:",
+        )
+        timer = parse_timer(raw_text)
+        attempts.append(
+            {
+                "position": position,
+                "method": "raw",
+                "psm": 13,
+                "rawText": raw_text,
+                "timer": timer,
+            }
+        )
+        if timer:
+            return timer, attempts
         for minimum_value in (100, 80):
             processed = preprocess_timer_area(
                 timer_area,
                 args.timer_scale,
                 minimum_value,
             )
-            raw_text = read_text_with_tesseract(
-                processed,
-                args.tesseract_cmd,
-                7,
-                "0123456789:",
-            )
-            timer = parse_timer(raw_text)
-            attempts.append(
-                {
-                    "position": position,
-                    "minimumValue": minimum_value,
-                    "rawText": raw_text,
-                    "timer": timer,
-                }
-            )
-            if timer:
-                return timer, attempts
+            for page_segmentation_mode in (13, 7):
+                raw_text = read_text_with_tesseract(
+                    processed,
+                    args.tesseract_cmd,
+                    page_segmentation_mode,
+                    "0123456789:",
+                )
+                timer = parse_timer(raw_text)
+                attempts.append(
+                    {
+                        "position": position,
+                        "minimumValue": minimum_value,
+                        "psm": page_segmentation_mode,
+                        "rawText": raw_text,
+                        "timer": timer,
+                    }
+                )
+                if timer:
+                    return timer, attempts
     return None, attempts
 
 

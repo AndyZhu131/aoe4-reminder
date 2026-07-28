@@ -8,10 +8,10 @@ const ageTiers = {
 let state;
 let technologies = [];
 let villagerIconUrl = "";
-let flashingEnabled = true;
 let remindersPaused = false;
 let settingsOpen = false;
 let timerAnchor;
+let captureSettings = { resolution: "2560x1440", monitor: 1 };
 
 function ageTier(age) {
   const match = /^age_([1-4])$/.exec(age || "");
@@ -102,7 +102,7 @@ function render() {
   overlay.className = [
     "overlay",
     !paused && villagerIdle ? "overlay--urgent" : "overlay--quiet",
-    !paused && villagerIdle && flashingEnabled ? "overlay--flashing" : "",
+    !paused && villagerIdle ? "overlay--flashing" : "",
     paused ? "overlay--paused" : "",
     "overlay--visible",
   ].filter(Boolean).join(" ");
@@ -117,9 +117,20 @@ function render() {
       </div>
       ${settingsOpen ? `
         <div class="settings-panel">
-          <label class="settings-toggle">
-            <span>Flash alerts</span>
-            <input id="flash-toggle" type="checkbox" ${flashingEnabled ? "checked" : ""}>
+          <label class="settings-select">
+            <span>Resolution</span>
+            <select id="resolution-select">
+              <option value="1920x1080" ${captureSettings.resolution === "1920x1080" ? "selected" : ""}>1920 x 1080</option>
+              <option value="2560x1440" ${captureSettings.resolution === "2560x1440" ? "selected" : ""}>2560 x 1440</option>
+              <option value="3840x2160" ${captureSettings.resolution === "3840x2160" ? "selected" : ""}>3840 x 2160</option>
+            </select>
+          </label>
+          <label class="settings-select">
+            <span>Monitor</span>
+            <select id="monitor-select">
+              <option value="1" ${captureSettings.monitor === 1 ? "selected" : ""}>Monitor 1</option>
+              <option value="2" ${captureSettings.monitor === 2 ? "selected" : ""}>Monitor 2</option>
+            </select>
           </label>
           <button class="settings-action" id="reset-position-button" type="button">Reset position</button>
           <button class="settings-action" id="developer-console-button" type="button">Developer console</button>
@@ -179,8 +190,19 @@ function render() {
     render();
   });
   if (settingsOpen) {
-    document.getElementById("flash-toggle").addEventListener("change", (event) => {
-      window.aoeOverlay.setFlashing(event.currentTarget.checked);
+    document.getElementById("resolution-select").addEventListener("change", async (event) => {
+      captureSettings = await window.aoeOverlay.setCaptureSettings({
+        resolution: event.currentTarget.value,
+        monitor: captureSettings.monitor,
+      });
+      render();
+    });
+    document.getElementById("monitor-select").addEventListener("change", async (event) => {
+      captureSettings = await window.aoeOverlay.setCaptureSettings({
+        resolution: captureSettings.resolution,
+        monitor: Number(event.currentTarget.value),
+      });
+      render();
     });
     document.getElementById("reset-position-button").addEventListener("click", () => {
       window.aoeOverlay.resetPosition();
@@ -206,7 +228,7 @@ async function start() {
   syncTimerAnchor(state);
   technologies = bootstrap.technologies;
   villagerIconUrl = bootstrap.villagerIconUrl;
-  flashingEnabled = bootstrap.flashingEnabled;
+  captureSettings = bootstrap.captureSettings;
   remindersPaused = bootstrap.remindersPaused;
   render();
 
@@ -214,10 +236,6 @@ async function start() {
     state = nextState;
     syncTimerAnchor(state);
     remindersPaused = nextState.remindersPaused ?? remindersPaused;
-    render();
-  });
-  window.aoeOverlay.onFlashing((enabled) => {
-    flashingEnabled = enabled;
     render();
   });
   window.aoeOverlay.onPaused((paused) => {

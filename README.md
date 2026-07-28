@@ -77,11 +77,12 @@ Core vision modules live under `scripts/aoe4/`:
 
 The first desktop overlay lives under `frontend/`. It is a transparent,
 always-on-top Electron rail. Drag the top control strip to position it; the
-selected position is saved locally. The settings button contains the persistent
-`Flash` preference, position reset, and a `Recalibrate screen` action. That
-action launches the existing calibration workflow after hiding the rail. `-`
-hides the rail and `Ctrl+Alt+O` restores it. The `x` button closes the overlay
-process.
+selected position is saved locally. The settings button contains resolution and
+monitor selectors, position reset, and a `Recalibrate screen` action. The
+1920x1080 and 3840x2160 calibration profiles are scaled from the 2560x1440
+reference calibration and rebased to the selected monitor. That action launches
+the existing calibration workflow after hiding the rail. `-` hides the rail and
+`Ctrl+Alt+O` restores it. The `x` button closes the overlay process.
 
 ```sh
 cd frontend
@@ -127,11 +128,8 @@ writes `runtime/overlay-state.json`, which keeps recognition and reminder logic
 out of Electron.
 
 The central monitor owns cross-reader reminder policy. The villager recognizer
-only reports whether an icon is queued. The villager alert is intentionally
-conservative: it appears only before
-`20:00`, when the resource reader reports more than `50` food, and no villager
-icon is queued. Food is refreshed every three seconds by default; an unread
-food value suppresses the alert.
+only reports whether an icon is queued. The villager alert appears before
+`20:00` whenever no villager icon is queued.
 
 Write a live test state without editing JSON manually:
 

@@ -5,10 +5,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
-from .age import read_age_roman, read_game_timer, resolve_age_timer_rect
-from .common import grab_region_bgr, load_region, parse_rect, parse_scales
+from .age import load_monitor, read_age_roman, read_game_timer, resolve_age_timer_rect
+from .common import (
+    RESOLUTION_MULTIPLIERS,
+    grab_region_bgr,
+    load_json,
+    load_region,
+    parse_rect,
+    parse_scales,
+    resolution_multiplier,
+    scale_pixels,
+)
 from .overlay import write_overlay_state
-from .resources import read_resource_panel
 from .tech import (
     DEFAULT_TECH_CATALOG,
     DEFAULT_TECH_TEMPLATE_ROOT,
@@ -23,12 +31,9 @@ from .villager import (
 )
 
 
-VILLAGER_REMINDER_FOOD_THRESHOLD = 50
 VILLAGER_REMINDER_CUTOFF_SECONDS = 20 * 60
 AGE_TIERS = {"age_1": 1, "age_2": 2, "age_3": 3, "age_4": 4}
 TECH_AGE_TIERS = {"dark": 1, "feudal": 2, "castle": 3, "imperial": 4}
-
-
 def timer_to_seconds(value):
     if value is None:
         return None
@@ -45,6 +50,11 @@ def format_timer(value):
 
 def display_age(age):
     return age if age in AGE_TIERS else "age_1"
+
+
+def scaled_template_scales(scales, resolution):
+    multiplier = resolution_multiplier(resolution)
+    return [round(scale * multiplier, 4) for scale in scales]
 
 
 @dataclass
@@ -364,7 +374,7 @@ def apply_technology_state(current_state, technologies, age, tracker):
 def age_reader_args(args):
     return SimpleNamespace(
         rect=args.age_rect,
-        use_calibrated_region=args.use_calibrated_region,
+        use_calibrated_region=True,
         config=args.config,
         monitor=args.monitor,
         age_scale=args.age_scale,
@@ -374,38 +384,30 @@ def age_reader_args(args):
 
 
 def villager_reader_args(args):
+    resolution_scale = resolution_multiplier(args.template_resolution)
     return SimpleNamespace(
         threshold=args.villager_threshold,
-        scales=args.villager_scales,
+        scales=scaled_template_scales(args.villager_scales, args.template_resolution),
+        queue_scale=resolution_scale,
         number_mask_ratio=args.number_mask_ratio,
         border_mask_ratio=args.villager_border_mask_ratio,
     )
 
 
 def research_reader_args(args):
+    resolution_scale = resolution_multiplier(args.template_resolution)
     return SimpleNamespace(
         threshold=args.research_threshold,
-        scales=args.research_scales,
+        scales=scaled_template_scales(args.research_scales, args.template_resolution),
         border_mask_ratio=args.research_border_mask_ratio,
-        min_distance=args.research_min_distance,
+        min_distance=scale_pixels(args.research_min_distance, resolution_scale, 1),
         max_detections=args.research_max_detections,
     )
 
 
-def resource_reader_args(args):
-    return SimpleNamespace(
-        scale=args.resource_scale,
-        psm=args.resource_psm,
-        tesseract_cmd=args.tesseract_cmd,
-        raw_fields=False,
-    )
-
-
-def should_remind_villager(food, villager_queued, game_seconds):
+def should_remind_villager(villager_queued, game_seconds):
     return (
-        food is not None
-        and food > VILLAGER_REMINDER_FOOD_THRESHOLD
-        and not villager_queued
+        not villager_queued
         and game_seconds is not None
         and game_seconds < VILLAGER_REMINDER_CUTOFF_SECONDS
     )
@@ -466,7 +468,6 @@ def command_watch_monitor(args):
         args.timer_interval <= 0
         or args.resync_interval <= 0
         or args.queue_interval <= 0
-        or args.resource_interval <= 0
     ):
         raise RuntimeError("timer, resource, and queue intervals must be greater than zero")
     if args.timer_tolerance < 0:
@@ -494,8 +495,19 @@ def command_watch_monitor(args):
 
     age_args = age_reader_args(args)
     age_rect = resolve_age_timer_rect(age_args)
-    queue_rect = load_region(Path(args.config), "globalQueue")
-    resource_rect = load_region(Path(args.config), "resources")
+    calibration = load_json(Path(args.config)) or {}
+    calibrated_monitor = int(calibration.get("monitor", 1))
+    selected_monitor = args.monitor if args.monitor is not None else calibrated_monitor
+    if (
+        selected_monitor != calibrated_monitor
+        and calibration.get("coordinateSpace") != "monitor"
+    ):
+        raise RuntimeError(
+            f"selected monitor {selected_monitor} does not match calibration monitor "
+            f"{calibrated_monitor}; recalibrate the selected monitor first"
+        )
+    monitor = load_monitor(selected_monitor)
+    queue_rect = load_region(Path(args.config), "globalQueue", monitor)
     technologies, missing_templates = load_technology_catalog(
         Path(args.catalog),
         args.template_root,
@@ -522,16 +534,13 @@ def command_watch_monitor(args):
     next_timer_check = 0.0
     next_age_check = 0.0
     next_queue_check = float("inf")
-    next_resource_check = float("inf")
-    latest_resources = None
     current_state = build_disabled_state(
         TimerDecision("starting", None, 0, False)
     )
     apply_technology_state(current_state, technologies, current_state["age"], research_tracker)
 
     print(
-        f"Session watcher ready. Timer region {age_rect}; queue region {queue_rect}; "
-        f"resource region {resource_rect}. "
+        f"Session watcher ready. Timer region {age_rect}; queue region {queue_rect}. "
         "Press Ctrl+C to stop.",
         flush=True,
     )
@@ -560,11 +569,9 @@ def command_watch_monitor(args):
                     args.research_confirmation_wins,
                     args.research_completion_delay,
                 )
-                latest_resources = None
                 next_timer_check = now
                 next_age_check = now
                 next_queue_check = float("inf")
-                next_resource_check = float("inf")
                 current_state = build_disabled_state(
                     TimerDecision("starting", None, 0, False)
                 )
@@ -593,7 +600,6 @@ def command_watch_monitor(args):
                     next_timer_check = now
                     next_age_check = now
                     next_queue_check = now
-                    next_resource_check = now
 
             if controls["paused"]:
                 if state_changed:
@@ -652,10 +658,8 @@ def command_watch_monitor(args):
                     )
                     if decision.reminders_enabled:
                         next_queue_check = now
-                        next_resource_check = now
                     else:
                         next_queue_check = float("inf")
-                        next_resource_check = float("inf")
                     state_changed = True
                     print(
                         {
@@ -668,18 +672,13 @@ def command_watch_monitor(args):
                         flush=True,
                     )
 
-            if synchronizer.mode in {"tracking", "resyncing"} and now >= next_resource_check:
-                resource_frame = grab_region_bgr(resource_rect)
-                latest_resources = read_resource_panel(
-                    resource_frame,
-                    resource_reader_args(args),
-                )
-                next_resource_check = now + args.resource_interval
-
             if synchronizer.mode in {"tracking", "resyncing"} and now >= next_queue_check:
                 queue_frame = grab_region_bgr(queue_rect)
                 villager_result = match_villager_icon(
-                    crop_production_queue(queue_frame),
+                    crop_production_queue(
+                        queue_frame,
+                        resolution_multiplier(args.template_resolution),
+                    ),
                     Path(args.villager_template),
                     villager_reader_args(args),
                 )
@@ -692,19 +691,14 @@ def command_watch_monitor(args):
                     detection["key"] for detection in research_result["researching"]
                 ]
                 current_state["villager_production_active"] = villager_result["villagerQueued"]
-                food = None
-                if latest_resources:
-                    food = latest_resources["resources"].get("food")
                 previous_villager_reminder = current_state["villager_reminder"]
                 current_state["villager_reminder"] = should_remind_villager(
-                    food,
                     villager_result["villagerQueued"],
                     synchronizer.estimated_seconds(now),
                 )
                 if current_state["villager_reminder"] and not previous_villager_reminder:
                     print(
-                        "VILLAGER_REMINDER: fired "
-                        f"reason=no_villager_detected food={food}",
+                        "VILLAGER_REMINDER: fired reason=no_villager_detected",
                         flush=True,
                     )
                 elif previous_villager_reminder and not current_state["villager_reminder"]:
@@ -749,7 +743,6 @@ def command_watch_monitor(args):
             sleep_until = min(
                 next_timer_check,
                 next_age_check,
-                next_resource_check,
                 next_queue_check,
             )
             time.sleep(max(0.05, min(0.25, sleep_until - time.monotonic())))
@@ -765,6 +758,11 @@ def add_monitor_args(parser):
     parser.add_argument("--config", default="config/calibration.2560x1440.json")
     parser.add_argument("--age-rect", type=parse_rect)
     parser.add_argument("--monitor", type=int)
+    parser.add_argument(
+        "--template-resolution",
+        choices=sorted(RESOLUTION_MULTIPLIERS),
+        default="2560x1440",
+    )
     parser.add_argument("--use-calibrated-region", action="store_true")
     parser.add_argument("--age-scale", type=float, default=8.0)
     parser.add_argument("--timer-scale", type=float, default=4.0)
@@ -781,9 +779,6 @@ def add_monitor_args(parser):
     parser.add_argument("--age-confirmation-checks", type=int, default=3)
     parser.add_argument("--age-confirmation-wins", type=int, default=2)
     parser.add_argument("--queue-interval", type=float, default=1.0)
-    parser.add_argument("--resource-interval", type=float, default=3.0)
-    parser.add_argument("--resource-scale", type=float, default=3.0)
-    parser.add_argument("--resource-psm", type=int, default=6)
     parser.add_argument("--villager-template", default=DEFAULT_VILLAGER_TEMPLATE)
     parser.add_argument("--villager-threshold", type=float, default=0.85)
     parser.add_argument(

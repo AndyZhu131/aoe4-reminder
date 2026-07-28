@@ -1,6 +1,8 @@
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -11,8 +13,68 @@ from aoe4.monitor import (
     TimerSynchronizer,
     available_technology_keys,
     locked_technology_keys,
+    scaled_template_scales,
     should_remind_villager,
 )
+from aoe4.common import load_region
+from aoe4.cli import build_parser
+from aoe4.villager import queue_geometry
+from aoe4.age import age_capture_layout, resolve_age_timer_rect
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class CalibrationProfileTests(unittest.TestCase):
+    def test_scaled_profiles_rebase_to_the_selected_monitor(self):
+        monitor = {"left": -1920, "top": 120}
+
+        profile_1080 = ROOT / "config" / "calibration.1920x1080.json"
+        profile_4k = ROOT / "config" / "calibration.3840x2160.json"
+
+        self.assertEqual(
+            load_region(profile_1080, "globalQueue", monitor),
+            (-1916, 802, 390, 87),
+        )
+        self.assertEqual(
+            load_region(profile_4k, "ageAndTimer", monitor),
+            (-159, 192, 311, 293),
+        )
+
+    def test_villager_watcher_accepts_a_monitor_selection(self):
+        args = build_parser().parse_args(
+            ["watch-villager", "--once", "--monitor", "1"]
+        )
+
+        self.assertEqual(args.monitor, 1)
+
+    def test_villager_queue_geometry_scales_with_the_profile(self):
+        self.assertEqual(queue_geometry(0.75), (36, 8, 44))
+        self.assertEqual(queue_geometry(1.0), (48, 10, 58))
+        self.assertEqual(queue_geometry(1.5), (72, 15, 87))
+
+    def test_calibrated_age_region_rebases_to_the_selected_monitor(self):
+        args = SimpleNamespace(
+            rect=None,
+            use_calibrated_region=True,
+            config=str(ROOT / "config" / "calibration.1920x1080.json"),
+            monitor=2,
+        )
+        monitor = {"left": 2560, "top": 0, "width": 1920, "height": 1080}
+
+        with patch("aoe4.age.load_monitor", return_value=monitor):
+            self.assertEqual(resolve_age_timer_rect(args), (3441, 36, 155, 146))
+
+    def test_age_reader_uses_the_wide_layout_for_calibrated_captures(self):
+        frame = SimpleNamespace(shape=(146, 155, 3))
+
+        roman_rect, timer_rects = age_capture_layout(frame)
+
+        self.assertEqual(roman_rect, (52 / 155, 0.0, 70 / 155, 38 / 146))
+        self.assertEqual(
+            timer_rects[0],
+            ("standard", (45 / 155, 60 / 146, 70 / 155, 40 / 146)),
+        )
 
 
 class TimerSynchronizerTests(unittest.TestCase):
@@ -144,26 +206,23 @@ class AgeProgressionTests(unittest.TestCase):
 
 
 class VillagerReminderTests(unittest.TestCase):
-    def test_reminds_before_twenty_minutes_with_more_than_fifty_food(self):
+    def test_reminds_before_twenty_minutes_without_a_villager(self):
         self.assertTrue(
             should_remind_villager(
-                food=51,
                 villager_queued=False,
                 game_seconds=(20 * 60) - 1,
             )
         )
 
-    def test_does_not_remind_at_or_below_the_food_threshold(self):
-        self.assertFalse(
-            should_remind_villager(food=50, villager_queued=False, game_seconds=60)
-        )
+    def test_reminds_regardless_of_food(self):
+        self.assertTrue(should_remind_villager(villager_queued=False, game_seconds=60))
 
     def test_does_not_remind_after_twenty_minutes_or_with_a_queued_villager(self):
         self.assertFalse(
-            should_remind_villager(food=100, villager_queued=False, game_seconds=20 * 60)
+            should_remind_villager(villager_queued=False, game_seconds=20 * 60)
         )
         self.assertFalse(
-            should_remind_villager(food=100, villager_queued=True, game_seconds=60)
+            should_remind_villager(villager_queued=True, game_seconds=60)
         )
 
 
@@ -229,6 +288,13 @@ class TechnologyReminderTests(unittest.TestCase):
             locked_technology_keys(self.technologies, "age_1", set()),
             ["wood_1"],
         )
+
+    def test_scales_canonical_templates_for_each_resolution(self):
+        scales = [0.96, 1.0, 1.04]
+
+        self.assertEqual(scaled_template_scales(scales, "1920x1080"), [0.72, 0.75, 0.78])
+        self.assertEqual(scaled_template_scales(scales, "2560x1440"), scales)
+        self.assertEqual(scaled_template_scales(scales, "3840x2160"), [1.44, 1.5, 1.56])
 
     def test_research_becomes_active_after_six_matches_in_ten_queue_reads(self):
         tracker = ResearchProgressTracker(

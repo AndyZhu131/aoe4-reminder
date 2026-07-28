@@ -4,12 +4,16 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 from .common import (
     grab_region_bgr,
     load_json,
     load_region,
+    resolution_multiplier,
     run_windows_hotkey_session,
+    scale_pixels,
+    scale_rect,
 )
 
 
@@ -22,14 +26,14 @@ RESEARCH_CAPTURE_RECTS = {
 }
 
 
-def extract_research_capture(source_path, output_path, row):
+def extract_research_capture(source_path, output_path, row, multiplier=1.0):
     import cv2
 
     frame = cv2.imread(str(source_path), cv2.IMREAD_COLOR)
     if frame is None:
         raise RuntimeError(f"could not read queue capture: {source_path}")
 
-    x, y, width, height = RESEARCH_CAPTURE_RECTS[row]
+    x, y, width, height = scale_rect(RESEARCH_CAPTURE_RECTS[row], multiplier)
     if x + width > frame.shape[1] or y + height > frame.shape[0]:
         raise RuntimeError(
             f"queue capture is too small for the {row} research slot: {source_path}"
@@ -104,6 +108,17 @@ def parse_categories(value):
     if not categories:
         raise argparse.ArgumentTypeError("at least one category is required")
     return categories
+
+
+def reader_args(args):
+    multiplier = resolution_multiplier(getattr(args, "template_resolution", "2560x1440"))
+    return SimpleNamespace(
+        threshold=args.threshold,
+        scales=[scale * multiplier for scale in args.scales],
+        border_mask_ratio=args.border_mask_ratio,
+        min_distance=scale_pixels(args.min_distance, multiplier, 1),
+        max_detections=args.max_detections,
+    )
 
 def research_template_mask(template, border_mask_ratio):
     import cv2
@@ -319,7 +334,7 @@ def command_match_research(args):
 
     started = time.perf_counter()
     frame = read_research_frame(args)
-    result = match_research_technologies(frame, technologies, args)
+    result = match_research_technologies(frame, technologies, reader_args(args))
     elapsed_ms = (time.perf_counter() - started) * 1000
 
     if args.debug_images:
@@ -366,7 +381,7 @@ def command_watch_research(args):
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
             started = time.perf_counter()
             frame = read_research_frame(args)
-            result = match_research_technologies(frame, technologies, args)
+            result = match_research_technologies(frame, technologies, reader_args(args))
             elapsed_ms = (time.perf_counter() - started) * 1000
             detected_keys = tuple(detection["key"] for detection in result["researching"])
             state_changed = previous_keys is not None and previous_keys != detected_keys
@@ -422,7 +437,7 @@ def command_test_research_queue(args):
         cv2.imwrite(str(source_path), frame)
 
         started = time.perf_counter()
-        result = match_research_technologies(frame, technologies, args)
+        result = match_research_technologies(frame, technologies, reader_args(args))
         elapsed_ms = (time.perf_counter() - started) * 1000
         save_research_debug_image(frame, result, debug_path)
 
