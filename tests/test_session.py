@@ -196,6 +196,22 @@ class AgeProgressionTests(unittest.TestCase):
         self.assertEqual(decisions[-1].age, "age_2")
         self.assertFalse(decisions[-1].pending)
 
+    def test_confirms_age_four_after_four_hits_in_five_checks(self):
+        progression = AgeProgression(confirmation_checks=5, confirmation_wins=4)
+
+        for expected_age in ("age_2", "age_3"):
+            for _ in range(5):
+                progression.observe(expected_age)
+
+        decisions = [
+            progression.observe(age)
+            for age in ("age_4", None, "age_4", "age_4", "age_4")
+        ]
+
+        self.assertTrue(decisions[0].pending)
+        self.assertEqual(decisions[-1].age, "age_4")
+        self.assertFalse(decisions[-1].pending)
+
     def test_discards_an_age_up_without_a_two_of_three_majority(self):
         progression = AgeProgression(confirmation_checks=3, confirmation_wins=2)
 

@@ -187,15 +187,23 @@ def match_inline_age_roman(frame):
         if component_height >= height * 0.85:
             continue
         # The wrapper dashes are short and horizontal, unlike the Roman glyphs.
-        if component_width > maximum_width or component_width > component_height:
+        if (
+            component_width > maximum_width
+            or component_width > component_height * 1.15
+        ):
             continue
         if not width * 0.12 <= center_x <= width * 0.88:
             continue
-        glyphs.append((int(x), int(component_width)))
+        glyphs.append((int(x), int(component_width), int(component_height)))
 
     glyphs.sort()
-    widths = [component_width for _x, component_width in glyphs]
+    widths = [component_width for _x, component_width, _height in glyphs]
     if len(widths) == 1:
+        # The I and V can touch in the calibrated wide crop. Their merged
+        # component is substantially wider than a standalone I glyph.
+        _x, component_width, component_height = glyphs[0]
+        if component_width / component_height >= 0.58:
+            return "age_4", glyphs
         return "age_1", glyphs
     if len(widths) == 2:
         # In IV, V is substantially wider than the preceding I.
@@ -261,7 +269,7 @@ def read_age_roman(frame, args):
         inline_age, glyphs = match_inline_age_roman(roman_crop)
         inline_attempt = {
             "method": "normalized-inline-glyphs",
-            "glyphWidths": [width for _x, width in glyphs],
+            "glyphWidths": [width for _x, width, _height in glyphs],
             "age": inline_age,
         }
         if inline_age:

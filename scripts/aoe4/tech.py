@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+from .age import load_monitor
 from .common import (
     grab_region_bgr,
     load_json,
@@ -306,7 +307,8 @@ def read_research_frame(args):
             raise RuntimeError(f"could not read source image: {args.source_image}")
         return crop_research_queue(frame)
 
-    rect = args.rect or load_region(Path(args.config), "globalQueue")
+    monitor = load_monitor(args.monitor) if args.monitor is not None else None
+    rect = args.rect or load_region(Path(args.config), "globalQueue", monitor)
     return crop_research_queue(grab_region_bgr(rect))
 
 def research_payload(result, elapsed_ms, missing_templates, state_changed=None):
@@ -376,7 +378,8 @@ def command_watch_research(args):
     if args.source_image:
         print(f"Reading research queue from image {args.source_image}.", file=sys.stderr)
     else:
-        rect = args.rect or load_region(Path(args.config), "globalQueue")
+        monitor = load_monitor(args.monitor) if args.monitor is not None else None
+        rect = args.rect or load_region(Path(args.config), "globalQueue", monitor)
         print(
             f"Watching both rows of globalQueue region {rect}. Press Ctrl+C to stop.",
             file=sys.stderr,
@@ -429,7 +432,8 @@ def command_test_research_queue(args):
     if not args.show_missing_templates:
         missing_templates = []
 
-    rect = args.rect or load_region(Path(args.config), "globalQueue")
+    monitor = load_monitor(args.monitor) if args.monitor is not None else None
+    rect = args.rect or load_region(Path(args.config), "globalQueue", monitor)
 
     print(
         f"Research queue test ready for globalQueue region {rect}. Press Ctrl+Alt+S "

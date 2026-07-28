@@ -179,6 +179,7 @@ def add_villager_args(parser):
 def add_research_args(parser):
     parser.add_argument("--config", default="config/calibration.2560x1440.json")
     parser.add_argument("--rect", type=parse_rect)
+    parser.add_argument("--monitor", type=int)
     parser.add_argument(
         "--template-resolution",
         choices=sorted(RESOLUTION_MULTIPLIERS),
