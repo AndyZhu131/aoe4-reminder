@@ -9,8 +9,10 @@ const catalogPath = path.join(appRoot, "data", "technologies.json");
 const runtimeStatePath = path.join(appRoot, "runtime", "overlay-state.json");
 const runtimeControlsPath = path.join(appRoot, "runtime", "overlay-controls.json");
 const exampleStatePath = path.join(appRoot, "runtime", "overlay-state.example.json");
+const calibrationPath = path.join(appRoot, "config", "calibration.2560x1440.json");
 const villagerIconPath = path.join(appRoot, "templates", "queue", "villager.png");
-const railSize = { width: 248, height: 120 };
+const railSize = { width: 720, height: 178 };
+const overlayLayout = "horizontal-two-row-calibrated-top";
 const startingAvailableTechnologies = ["wheelbarrow"];
 const startingLockedTechnologies = [
   "wood_1",
@@ -117,7 +119,8 @@ function readCatalog() {
 
 function savedPosition() {
   try {
-    return readJson(path.join(app.getPath("userData"), "overlay-position.json"));
+    const position = readJson(path.join(app.getPath("userData"), "overlay-position.json"));
+    return position.layout === overlayLayout ? position : null;
   } catch {
     return null;
   }
@@ -139,11 +142,34 @@ function persistSettings() {
   );
 }
 
+function calibratedAgeTimerRegion() {
+  try {
+    const values = readJson(calibrationPath).regions?.ageAndTimer;
+    if (!Array.isArray(values) || values.length !== 4) return null;
+    const [x, y, width, height] = values.map(Number);
+    if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+      return null;
+    }
+    return { x, y, width, height };
+  } catch {
+    return null;
+  }
+}
+
 function defaultPosition(height = railSize.height) {
   const workArea = screen.getPrimaryDisplay().workArea;
+  const region = calibratedAgeTimerRegion();
+  if (region) {
+    const display = screen.getDisplayNearestPoint({ x: region.x, y: region.y }).workArea;
+    const desired = { x: region.x + region.width + 20, y: display.y };
+    return {
+      x: Math.max(display.x + 8, Math.min(desired.x, display.x + display.width - railSize.width - 8)),
+      y: display.y,
+    };
+  }
   return {
-    x: workArea.x + workArea.width - railSize.width - 28,
-    y: workArea.y + Math.max(72, Math.round((workArea.height - height) / 2)),
+    x: workArea.x + Math.max(8, Math.round((workArea.width - railSize.width) / 2)),
+    y: workArea.y + Math.max(8, workArea.height - height - 28),
   };
 }
 
@@ -152,7 +178,7 @@ function persistPosition() {
   const [x, y] = overlayWindow.getPosition();
   fs.writeFileSync(
     path.join(app.getPath("userData"), "overlay-position.json"),
-    JSON.stringify({ x, y }, null, 2),
+    JSON.stringify({ x, y, layout: overlayLayout }, null, 2),
   );
 }
 

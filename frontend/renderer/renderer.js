@@ -126,18 +126,20 @@ function render() {
           <button class="settings-action settings-action--primary" id="calibrate-button" type="button">Recalibrate screen</button>
         </div>
       ` : ""}
-      <div class="session-status">
-        <time class="game-timer" title="Game timer">${timerLabel()}</time>
-        <div class="age-marker" title="Current age"><span>Age</span><strong>${ageLabel(state.age)}</strong></div>
-      </div>
-      <div class="reminder-actions">
-        <button class="reminder-action" id="pause-reminders-button" type="button" title="${paused ? "Resume reminders" : "Pause reminders"}" aria-label="${paused ? "Resume reminders" : "Pause reminders"}" aria-pressed="${paused}">${paused ? "&#9654;" : "&#10074;&#10074;"}</button>
-        <button class="reminder-action" id="reset-reminders-button" type="button" title="Reset reminder session" aria-label="Reset reminder session">&#8635;</button>
-      </div>
       <div class="reminder-content">
-        <div class="villager-alert ${villagerIdle ? "villager-alert--idle" : "villager-alert--active"}" title="${villagerIdle ? "Villager production is idle" : "Villager production is active"}">
-          <img src="${villagerIconUrl}" alt="" />
-        </div>
+        <aside class="status-panel">
+          <div class="session-status">
+            <time class="game-timer" title="Game timer">${timerLabel()}</time>
+            <div class="age-marker" title="Current age"><span>Age</span><strong>${ageLabel(state.age)}</strong></div>
+          </div>
+          <div class="reminder-actions">
+            <button class="reminder-action" id="pause-reminders-button" type="button" title="${paused ? "Resume reminders" : "Pause reminders"}" aria-label="${paused ? "Resume reminders" : "Pause reminders"}" aria-pressed="${paused}">${paused ? "&#9654;" : "&#10074;&#10074;"}</button>
+            <button class="reminder-action" id="reset-reminders-button" type="button" title="Reset reminder session" aria-label="Reset reminder session">&#8635;</button>
+          </div>
+          <div class="villager-alert ${villagerIdle ? "villager-alert--idle" : "villager-alert--active"}" title="${villagerIdle ? "Villager production is idle" : "Villager production is active"}">
+            <img src="${villagerIconUrl}" alt="" />
+          </div>
+        </aside>
         <div class="technology-sections">
           <section class="technology-section technology-section--economy">
             <h2>Economy</h2>
