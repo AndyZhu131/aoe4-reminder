@@ -179,7 +179,6 @@ def match_villager_icon(frame, template_path, args):
     best["queueTileCount"] = len(queue_tiles)
     best["queueTiles"] = queue_tiles
     best["villagerQueued"] = best["score"] >= args.threshold
-    best["shouldRemindVillager"] = not best["villagerQueued"]
     best["threshold"] = args.threshold
     return best
 
@@ -233,7 +232,6 @@ def villager_payload(result, elapsed_ms, state_changed=None):
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "reader": VILLAGER_READER,
         "villagerQueued": result["villagerQueued"],
-        "shouldRemindVillager": result["shouldRemindVillager"],
         "score": round(result["score"], 4),
         "threshold": result["threshold"],
         "match": result["match"],

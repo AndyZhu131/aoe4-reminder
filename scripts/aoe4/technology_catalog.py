@@ -71,6 +71,8 @@ def inject_technology_catalog(catalog_path, template_root=None, civilization="si
                 "category": discovery["category"],
                 "ageAvailable": discovery["ageAvailable"],
                 "building": existing.get("building"),
+                "prerequisites": existing.get("prerequisites", []),
+                "previewBeforeAge": existing.get("previewBeforeAge", False),
                 "templates": [discovery["template"]],
             }
         )

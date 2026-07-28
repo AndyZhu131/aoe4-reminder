@@ -9,6 +9,15 @@ Use `scripts/aoe4_assistant.py` as the command entry point:
 python scripts/aoe4_assistant.py --help
 ```
 
+## Entry Points
+
+- `scripts/aoe4_assistant.py` launches the Python backend CLI.
+- `frontend/main.cjs` launches the Electron desktop overlay.
+
+The backend launcher is intentionally small. `scripts/aoe4/cli.py` registers
+commands, while `scripts/aoe4/monitor.py` centrally coordinates readers and
+applies reminder policy.
+
 Start a queue capture session, then press `Ctrl+Alt+S` whenever the research
 icon is ready to save:
 
@@ -33,8 +42,9 @@ The automatic crop is the top 20% of the selected monitor and 100 px wide at
 2048 px screen width. Use `--use-calibrated-region` to fall back to the saved
 `ageAndTimer` rectangle.
 
-Age recognition OCRs the fixed Roman-numeral location (`I` through `IV`) and
-timer location inside this crop. Run it against labeled captures named
+Age recognition matches visual templates at the fixed Roman-numeral location
+(`I` through `IV`) and falls back to OCR; timer recognition uses OCR inside this
+crop. Run it against labeled captures named
 `MM-SS-AGE.png`:
 
 ```sh
@@ -79,9 +89,14 @@ npm install
 npm run dev
 ```
 
+Opening the Electron overlay also starts the Python `watch-monitor` backend and
+stops it when the overlay process closes. Its logs are forwarded to the Electron
+console, so no separate monitor command is needed for normal use.
+
 The overlay polls `runtime/overlay-state.json` every half second. Copy
-`runtime/overlay-state.example.json` to that path to try the visual state. The
-current contract is:
+`runtime/overlay-state.example.json` to that path to try the visual state. Its
+starting state is Age I at `00:00`, with Wheelbarrow active and common Feudal
+technology previews muted. The current contract is:
 
 ```json
 {
@@ -96,16 +111,27 @@ current contract is:
 To drive the overlay from the live readers, start the session coordinator:
 
 ```sh
-python scripts/aoe4_assistant.py watch-session
+python scripts/aoe4_assistant.py watch-monitor
 ```
 
 It begins with reminders disabled, anchors a monotonic local clock from the
-recognized game timer, then validates that timer every five seconds. A timer
-mismatch disables queue recognition and switches to one-second checks. After
-five consecutive mismatches the session is treated as paused; a later advancing
-timer resumes recognition and re-anchors the local clock. The coordinator is
-the only backend-to-frontend bridge: it writes `runtime/overlay-state.json`,
-which keeps recognition and reminder logic out of Electron.
+recognized game timer, then validates that timer every five seconds. The
+overlay advances that confirmed time locally between validations. A timer
+mismatch keeps the current state while switching to one-second verification
+checks. The monitor marks the game paused only after five matching frozen timer
+reads within six samples; ordinary timer recovery needs three confirming reads
+within five samples. Age is checked every five seconds, never moves backward,
+and advances after a two-of-three majority vote from one-second confirmation
+reads. The coordinator is the only backend-to-frontend bridge: it
+writes `runtime/overlay-state.json`, which keeps recognition and reminder logic
+out of Electron.
+
+The central monitor owns cross-reader reminder policy. The villager recognizer
+only reports whether an icon is queued. The villager alert is intentionally
+conservative: it appears only before
+`20:00`, when the resource reader reports more than `50` food, and no villager
+icon is queued. Food is refreshed every three seconds by default; an unread
+food value suppresses the alert.
 
 Write a live test state without editing JSON manually:
 
@@ -114,10 +140,21 @@ python scripts/aoe4_assistant.py overlay-state --age age_2 --villager-production
 ```
 
 The rail pulses a large villager icon only while villager production is idle.
-It renders common technology icons whose `ageAvailable` value is at or below
-the detected age, excluding any keys listed as researched. The current vision
-commands do not yet maintain a researched-technology history; a future state
-watcher will populate that field.
+The pause button suppresses urgency and flashing while recognition continues;
+the reset button clears the current monitor session's timer, age, and technology
+history.
+  It renders only technologies unlocked by the detected age and their catalog
+  prerequisites. Unresearched technologies carry forward through later ages;
+  upgrade chains such as `wood_1` -> `wood_2` -> `wood_3` never skip a level.
+  When the prior level is complete but the next age is not yet reached, the
+  next-level icon stays visible as a muted preview and becomes a normal reminder
+  when that age is confirmed.
+  Catalog entries can also set `previewBeforeAge` for an opening-game preview;
+  the SiS catalog uses this for the common Feudal upgrades shown muted in Age I.
+  A technology is confirmed in progress after it appears in at least six of
+  ten queue reads. It remains in progress for 30 seconds of game time, then is
+  marked researched and removed from reminders. Game pauses do not consume this
+  completion window.
 
 Technology templates are classified by `civilization`, category, and age. The
 current templates are `sis`; after adding or moving templates, refresh the

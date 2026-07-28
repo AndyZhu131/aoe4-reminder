@@ -20,6 +20,7 @@
       "category": "economy",
       "ageAvailable": "feudal",
       "building": "lumber_camp",
+      "previewBeforeAge": true,
       "templates": [
         "economy/age2/double_broadaxe.png"
       ]
@@ -31,6 +32,7 @@
       "category": "economy",
       "ageAvailable": "feudal",
       "building": "mill",
+      "previewBeforeAge": true,
       "templates": [
         "economy/age2/horticulture.png"
       ]
@@ -42,6 +44,7 @@
       "category": "economy",
       "ageAvailable": "feudal",
       "building": "mining_camp",
+      "previewBeforeAge": true,
       "templates": [
         "economy/age2/specialized_pick.png"
       ]
@@ -53,6 +56,7 @@
       "category": "economy",
       "ageAvailable": "feudal",
       "building": "mill",
+      "previewBeforeAge": true,
       "templates": [
         "economy/age2/survival_techniques.png"
       ]
@@ -64,6 +68,7 @@
       "category": "economy",
       "ageAvailable": "castle",
       "building": "mining_camp",
+      "prerequisites": ["mine_1"],
       "templates": [
         "economy/age3/acid_distillation.png"
       ]
@@ -75,6 +80,7 @@
       "category": "economy",
       "ageAvailable": "castle",
       "building": "mill",
+      "prerequisites": ["food_1"],
       "templates": [
         "economy/age3/fertilization.png"
       ]
@@ -86,6 +92,7 @@
       "category": "economy",
       "ageAvailable": "castle",
       "building": "lumber_camp",
+      "prerequisites": ["wood_1"],
       "templates": [
         "economy/age3/lumber_preservation.png"
       ]
@@ -97,6 +104,7 @@
       "category": "economy",
       "ageAvailable": "imperial",
       "building": "lumber_camp",
+      "prerequisites": ["wood_2"],
       "templates": [
         "economy/age4/crosscut_saw.png"
       ]
@@ -108,6 +116,7 @@
       "category": "economy",
       "ageAvailable": "imperial",
       "building": "mining_camp",
+      "prerequisites": ["mine_2"],
       "templates": [
         "economy/age4/cupellation.png"
       ]
@@ -119,6 +128,7 @@
       "category": "economy",
       "ageAvailable": "imperial",
       "building": "mill",
+      "prerequisites": ["food_2"],
       "templates": [
         "economy/age4/precision_crossbreeding.png"
       ]
@@ -130,6 +140,7 @@
       "category": "military",
       "ageAvailable": "feudal",
       "building": "blacksmith",
+      "previewBeforeAge": true,
       "templates": [
         "military/age2/blacksmith_melee_armor_1.png"
       ]
@@ -141,6 +152,7 @@
       "category": "military",
       "ageAvailable": "feudal",
       "building": "blacksmith",
+      "previewBeforeAge": true,
       "templates": [
         "military/age2/blacksmith_melee_attack_1.png"
       ]
@@ -152,6 +164,7 @@
       "category": "military",
       "ageAvailable": "feudal",
       "building": "blacksmith",
+      "previewBeforeAge": true,
       "templates": [
         "military/age2/blacksmith_ranged_armor_1.png"
       ]
@@ -163,6 +176,7 @@
       "category": "military",
       "ageAvailable": "feudal",
       "building": "blacksmith",
+      "previewBeforeAge": true,
       "templates": [
         "military/age2/blacksmith_ranged_attack_1.png"
       ]
@@ -174,6 +188,7 @@
       "category": "military",
       "ageAvailable": "feudal",
       "building": null,
+      "previewBeforeAge": true,
       "templates": [
         "military/age2/military_academy.png"
       ]
@@ -185,6 +200,7 @@
       "category": "military",
       "ageAvailable": "feudal",
       "building": null,
+      "previewBeforeAge": true,
       "templates": [
         "military/age2/siege.png"
       ]
@@ -196,6 +212,7 @@
       "category": "military",
       "ageAvailable": "castle",
       "building": "blacksmith",
+      "prerequisites": ["melee_def_1"],
       "templates": [
         "military/age3/blacksmith_melee_armor_2.png"
       ]
@@ -207,6 +224,7 @@
       "category": "military",
       "ageAvailable": "castle",
       "building": "blacksmith",
+      "prerequisites": ["melee_atk_1"],
       "templates": [
         "military/age3/blacksmith_melee_attack_2.png"
       ]
@@ -218,6 +236,7 @@
       "category": "military",
       "ageAvailable": "castle",
       "building": "blacksmith",
+      "prerequisites": ["range_def_1"],
       "templates": [
         "military/age3/blacksmith_ranged_armor_2.png"
       ]
@@ -229,6 +248,7 @@
       "category": "military",
       "ageAvailable": "castle",
       "building": "blacksmith",
+      "prerequisites": ["range_atk_1"],
       "templates": [
         "military/age3/blacksmith_ranged_attack_2.png"
       ]
@@ -240,6 +260,7 @@
       "category": "military",
       "ageAvailable": "imperial",
       "building": "blacksmith",
+      "prerequisites": ["melee_def_2"],
       "templates": [
         "military/age4/blacksmith_melee_armor_3.png"
       ]
@@ -251,6 +272,7 @@
       "category": "military",
       "ageAvailable": "imperial",
       "building": "blacksmith",
+      "prerequisites": ["melee_atk_2"],
       "templates": [
         "military/age4/blacksmith_melee_attack_3.png"
       ]
@@ -262,6 +284,7 @@
       "category": "military",
       "ageAvailable": "imperial",
       "building": "blacksmith",
+      "prerequisites": ["range_def_2"],
       "templates": [
         "military/age4/blacksmith_ranged_armor_3.png"
       ]
@@ -273,6 +296,7 @@
       "category": "military",
       "ageAvailable": "imperial",
       "building": "blacksmith",
+      "prerequisites": ["range_atk_2"],
       "templates": [
         "military/age4/blacksmith_ranged_attack_3.png"
       ]

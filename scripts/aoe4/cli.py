@@ -12,7 +12,7 @@ from aoe4.overlay import (
     command_write_overlay_state,
     parse_technology_keys,
 )
-from aoe4.session import add_session_args, command_watch_session
+from aoe4.monitor import add_monitor_args, command_watch_monitor
 from aoe4.technology_catalog import add_inject_technologies_args, command_inject_technologies
 from aoe4.common import (
     REGIONS,
@@ -331,12 +331,13 @@ def build_parser():
     add_inject_technologies_args(inject_technologies)
     inject_technologies.set_defaults(func=command_inject_technologies)
 
-    watch_session = subparsers.add_parser(
-        "watch-session",
-        help="gate reminder recognition behind a synchronized game timer",
+    watch_monitor = subparsers.add_parser(
+        "watch-monitor",
+        aliases=["watch-session"],
+        help="centrally coordinate recognition and reminder policy",
     )
-    add_session_args(watch_session)
-    watch_session.set_defaults(func=command_watch_session)
+    add_monitor_args(watch_monitor)
+    watch_monitor.set_defaults(func=command_watch_monitor)
 
     match = subparsers.add_parser(
         "match", help="capture or load one region and compare it to an icon template"

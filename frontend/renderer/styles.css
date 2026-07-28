@@ -18,9 +18,7 @@ body,
 }
 
 .overlay {
-  display: flex;
-  justify-content: flex-end;
-  padding: 8px 0 8px 8px;
+  padding: 8px;
   opacity: 0;
   transition: opacity 180ms ease;
 }
@@ -30,27 +28,22 @@ body,
 }
 
 .rail {
-  width: 232px;
-  max-height: calc(100vh - 16px);
+  width: 100%;
+  min-height: 162px;
   overflow: hidden;
   border: 1px solid rgba(196, 212, 221, 0.18);
-  border-right: 3px solid rgba(94, 174, 179, 0.5);
+  border-bottom: 3px solid rgba(94, 174, 179, 0.5);
   background: rgba(9, 13, 17, 0.34);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
   transition: background 180ms ease, border-color 180ms ease;
 }
 
 .overlay--quiet .rail {
-  opacity: 0.42;
-}
-
-.overlay--quiet .rail:hover,
-.overlay--quiet .rail:focus-within {
-  opacity: 1;
+  background: rgba(9, 13, 17, 0.16);
 }
 
 .overlay--urgent .rail {
-  border-right-color: #ffbd56;
+  border-bottom-color: #ffbd56;
   background: rgba(30, 17, 11, 0.54);
 }
 
@@ -102,8 +95,10 @@ body,
 
 .settings-panel {
   display: grid;
+  grid-template-columns: minmax(150px, 1fr) repeat(3, auto);
+  align-items: center;
   gap: 8px;
-  padding: 11px 12px;
+  padding: 8px 12px;
   border-bottom: 1px solid rgba(180, 225, 224, 0.2);
   background: rgba(5, 12, 16, 0.54);
 }
@@ -126,6 +121,7 @@ body,
 }
 
 .settings-action {
+  padding: 0 10px;
   min-height: 30px;
   border: 1px solid rgba(180, 225, 224, 0.28);
   background: rgba(17, 33, 40, 0.7);
@@ -157,7 +153,7 @@ body,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 9px 14px 7px;
+  width: 100%;
 }
 
 .game-timer {
@@ -185,10 +181,20 @@ body,
 .villager-alert {
   display: grid;
   place-items: center;
-  min-height: 118px;
-  margin: 0 12px 10px;
+  width: 58px;
+  height: 58px;
   border-top: 1px solid rgba(255, 189, 86, 0.46);
   border-bottom: 1px solid rgba(255, 189, 86, 0.46);
+}
+
+.villager-alert--active {
+  border-top-color: rgba(116, 211, 196, 0.32);
+  border-bottom-color: rgba(116, 211, 196, 0.32);
+}
+
+.villager-alert--active img {
+  filter: grayscale(1) brightness(0.65);
+  opacity: 0.68;
 }
 
 .overlay--flashing .villager-alert {
@@ -196,26 +202,76 @@ body,
 }
 
 .villager-alert img {
-  width: 88px;
-  height: 88px;
+  width: 52px;
+  height: 52px;
   image-rendering: auto;
   filter: drop-shadow(0 0 11px rgba(255, 184, 73, 0.78));
 }
 
+.reminder-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  width: 100%;
+  gap: 5px;
+}
+
+.reminder-action {
+  height: 30px;
+  border: 1px solid rgba(180, 225, 224, 0.26);
+  background: rgba(4, 7, 9, 0.24);
+  color: #d9e7e6;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.reminder-action:hover,
+.reminder-action:focus-visible {
+  border-color: rgba(101, 210, 215, 0.84);
+  background: rgba(41, 86, 93, 0.72);
+  outline: none;
+}
+
+.reminder-action:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+
+.reminder-content {
+  display: grid;
+  grid-template-columns: 175px minmax(0, 1fr);
+  align-items: center;
+  min-height: 128px;
+}
+
+.status-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58px;
+  grid-template-rows: auto 30px;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 10px 12px;
+  border-right: 1px solid rgba(180, 225, 224, 0.2);
+}
+
+.status-panel .villager-alert {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+}
+
+.technology-sections {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: stretch;
+}
+
 .technology-section {
-  padding: 9px 12px 12px;
+  padding: 10px 12px;
 }
 
 .technology-section--military {
-  border-top: 1px solid rgba(180, 225, 224, 0.2);
-}
-
-.technology-section--economy .technology-grid {
-  min-height: 135px;
-}
-
-.technology-section--military .technology-grid {
-  min-height: 206px;
+  border-left: 1px solid rgba(180, 225, 224, 0.2);
 }
 
 .technology-section h2 {
@@ -233,9 +289,16 @@ body,
 
 .technology-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-auto-rows: 64px;
-  gap: 7px;
+  grid-auto-rows: 48px;
+  gap: 5px;
+}
+
+.technology-section--economy .technology-grid {
+  grid-template-columns: repeat(3, 48px);
+}
+
+.technology-section--military .technology-grid {
+  grid-template-columns: repeat(5, 48px);
 }
 
 .technology {
@@ -252,10 +315,19 @@ body,
   object-fit: cover;
 }
 
-.technology--active {
-  border-color: rgba(116, 211, 196, 0.95);
-  box-shadow: inset 0 0 0 1px rgba(116, 211, 196, 0.5);
-  opacity: 0.4;
+.technology--detected {
+  border-color: rgba(255, 96, 86, 0.98);
+  box-shadow: inset 0 0 0 1px rgba(255, 96, 86, 0.55);
+}
+
+.technology--locked {
+  border-color: rgba(175, 188, 190, 0.12);
+  background: rgba(3, 5, 6, 0.36);
+}
+
+.technology--locked img {
+  filter: grayscale(1) brightness(0.62);
+  opacity: 0.42;
 }
 
 @keyframes villager-pulse {

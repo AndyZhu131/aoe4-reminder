@@ -16,9 +16,11 @@ from .common import (
 from .resources import read_text_with_tesseract
 
 
-AGE_READER = "fixed-position-roman-ocr"
+AGE_READER = "fixed-position-roman-template"
 AGE_CAPTURE_REFERENCE_SIZE = (125, 288)
 AGE_ROMAN_RECT = (38, 40, 50, 58)
+AGE_TEMPLATE_DIR = Path(__file__).resolve().parents[2] / "templates" / "age"
+AGE_TEMPLATE_THRESHOLD = 0.18
 TIMER_RECTS = (
     ("standard", (32, 142, 64, 28)),
     ("ageUp", (32, 200, 64, 29)),
@@ -145,13 +147,60 @@ def preprocess_age_roman(frame, scale, minimum_value):
     )
 
 
+def match_age_template(frame):
+    import cv2
+
+    roman_crop = crop_age_roman(frame)
+    source = cv2.Canny(
+        cv2.cvtColor(roman_crop, cv2.COLOR_BGR2GRAY),
+        60,
+        140,
+    )
+    attempts = []
+    for age, filename in AGE_ROMAN_TO_LABEL.items():
+        template_path = AGE_TEMPLATE_DIR / f"{filename}.png"
+        template = cv2.imread(str(template_path), cv2.IMREAD_COLOR)
+        if template is None:
+            continue
+        template_edges = cv2.Canny(
+            cv2.cvtColor(template, cv2.COLOR_BGR2GRAY),
+            60,
+            140,
+        )
+        if template_edges.shape != source.shape:
+            template_edges = cv2.resize(
+                template_edges,
+                (source.shape[1], source.shape[0]),
+                interpolation=cv2.INTER_NEAREST,
+            )
+        score = float(cv2.matchTemplate(source, template_edges, cv2.TM_CCOEFF_NORMED)[0, 0])
+        attempts.append(
+            {
+                "template": filename,
+                "score": round(score, 4),
+            }
+        )
+
+    if not attempts:
+        return None, attempts
+    best = max(attempts, key=lambda attempt: attempt["score"])
+    return (
+        best["template"] if best["score"] >= AGE_TEMPLATE_THRESHOLD else None,
+        attempts,
+    )
+
+
 def parse_age_roman(raw_text):
     roman = "".join(character for character in raw_text.upper() if character in "IV")
     return AGE_ROMAN_TO_LABEL.get(roman)
 
 
 def read_age_roman(frame, args):
-    attempts = []
+    matched_age, template_attempts = match_age_template(frame)
+    attempts = [{"method": "template", **attempt} for attempt in template_attempts]
+    if matched_age:
+        return matched_age, attempts
+
     roman_crop = crop_age_roman(frame)
     for minimum_value in (95, 125, 70, 155):
         processed = preprocess_age_roman(
@@ -163,6 +212,7 @@ def read_age_roman(frame, args):
         age = parse_age_roman(raw_text)
         attempts.append(
             {
+                "method": "ocr",
                 "minimumValue": minimum_value,
                 "rawText": raw_text,
                 "age": age,
