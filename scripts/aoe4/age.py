@@ -164,6 +164,45 @@ def preprocess_age_roman(frame, scale, minimum_value):
     )
 
 
+def match_inline_age_roman(frame):
+    """Classify the inline ``- III -`` marker from its gold vertical glyphs."""
+    import cv2
+
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    # Bright gold glyph highlights stay distinct even when terrain is gold or brown.
+    gold_mask = cv2.inRange(hsv, (5, 40, 180), (55, 255, 255))
+    count, labels, stats, centroids = cv2.connectedComponentsWithStats(gold_mask)
+    height, width = gold_mask.shape[:2]
+    minimum_height = max(6, round(height * 0.42))
+    maximum_width = max(5, round(height * 0.95))
+    glyphs = []
+
+    for index in range(1, count):
+        x, y, component_width, component_height, area = stats[index]
+        center_x, _center_y = centroids[index]
+        if area < 8 or component_height < minimum_height:
+            continue
+        # The wrapper dashes are short and horizontal, unlike the Roman glyphs.
+        if component_width > maximum_width or component_width > component_height:
+            continue
+        if not width * 0.12 <= center_x <= width * 0.88:
+            continue
+        glyphs.append((int(x), int(component_width)))
+
+    glyphs.sort()
+    widths = [component_width for _x, component_width in glyphs]
+    if len(widths) == 1:
+        return "age_1", glyphs
+    if len(widths) == 2:
+        # In IV, V is substantially wider than the preceding I.
+        if max(widths) >= min(widths) * 1.45:
+            return "age_4", glyphs
+        return "age_2", glyphs
+    if len(widths) == 3:
+        return "age_3", glyphs
+    return None, glyphs
+
+
 def match_age_template(frame):
     import cv2
 
@@ -213,12 +252,24 @@ def parse_age_roman(raw_text):
 
 
 def read_age_roman(frame, args):
+    roman_crop = crop_age_roman(frame)
+    if frame.shape[1] / max(1, frame.shape[0]) >= 0.75:
+        inline_age, glyphs = match_inline_age_roman(roman_crop)
+        inline_attempt = {
+            "method": "normalized-inline-glyphs",
+            "glyphWidths": [width for _x, width in glyphs],
+            "age": inline_age,
+        }
+        if inline_age:
+            return inline_age, [inline_attempt]
+
     matched_age, template_attempts = match_age_template(frame)
     attempts = [{"method": "template", **attempt} for attempt in template_attempts]
+    if frame.shape[1] / max(1, frame.shape[0]) >= 0.75:
+        attempts.insert(0, inline_attempt)
     if matched_age:
         return matched_age, attempts
 
-    roman_crop = crop_age_roman(frame)
     for minimum_value in (95, 125, 70, 155):
         processed = preprocess_age_roman(
             roman_crop,

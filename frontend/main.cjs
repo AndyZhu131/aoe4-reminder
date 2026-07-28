@@ -83,12 +83,6 @@ function writeOverlayControls(controls) {
   fs.renameSync(temporaryPath, runtimeControlsPath);
 }
 
-function writeRuntimeState(state) {
-  const temporaryPath = `${runtimeStatePath}.tmp`;
-  fs.writeFileSync(temporaryPath, JSON.stringify(state, null, 2));
-  fs.renameSync(temporaryPath, runtimeStatePath);
-}
-
 function appendDeveloperLog(source, message) {
   for (const line of String(message).split(/\r?\n/)) {
     if (!line) continue;
@@ -438,7 +432,6 @@ app.whenReady().then(() => {
       paused: remindersPaused,
     });
     latestState = { ...latestState, remindersPaused };
-    writeRuntimeState(latestState);
     appendDeveloperLog("overlay", `reminders ${remindersPaused ? "paused" : "resumed"}`);
     overlayWindow?.webContents.send("overlay:state", latestState);
     overlayWindow?.webContents.send("overlay:paused", remindersPaused);
@@ -451,7 +444,6 @@ app.whenReady().then(() => {
       resetToken: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     });
     latestState = defaultState();
-    writeRuntimeState(latestState);
     appendDeveloperLog("overlay", "reminder session reset requested");
     overlayWindow?.webContents.send("overlay:state", latestState);
     overlayWindow?.webContents.send("overlay:paused", remindersPaused);

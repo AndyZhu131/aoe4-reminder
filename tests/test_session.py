@@ -78,83 +78,62 @@ class CalibrationProfileTests(unittest.TestCase):
 
 
 class TimerSynchronizerTests(unittest.TestCase):
-    def test_tracks_an_aligned_timer(self):
-        synchronizer = TimerSynchronizer(
-            tolerance=1.5,
-            confirmation_checks=5,
-            confirmation_wins=3,
-        )
+    def test_keeps_the_original_anchor_during_normal_tracking(self):
+        synchronizer = TimerSynchronizer()
 
         initial = synchronizer.observe(10, now=100.0)
-        aligned = synchronizer.observe(15, now=105.0)
+        tracking = synchronizer.observe(14, now=105.0)
 
         self.assertTrue(initial.reminders_enabled)
-        self.assertEqual(aligned.mode, "tracking")
-        self.assertEqual(aligned.mismatch_count, 0)
-        self.assertTrue(aligned.reminders_enabled)
+        self.assertEqual(tracking.mode, "tracking")
+        self.assertEqual(tracking.estimated_seconds, 15)
+        self.assertEqual(synchronizer.anchor_game_seconds, 10)
 
-    def test_disables_reminders_after_timer_stops_advancing(self):
-        synchronizer = TimerSynchronizer(
-            tolerance=1.5,
-            confirmation_checks=5,
-            confirmation_wins=3,
-        )
+    def test_disables_reminders_after_three_matches_in_five_pause_checks(self):
+        synchronizer = TimerSynchronizer()
         synchronizer.observe(10, now=0.0)
         synchronizer.observe(15, now=5.0)
-
-        decisions = [
-            synchronizer.observe(15, now=moment)
-            for moment in (10.0, 11.0, 12.0, 13.0, 14.0, 15.0)
-        ]
-
-        self.assertEqual(decisions[0].mode, "resyncing")
-        self.assertTrue(decisions[0].reminders_enabled)
-        self.assertEqual(decisions[-1].mode, "paused")
-        self.assertEqual(decisions[-1].mismatch_count, 6)
-        self.assertFalse(decisions[-1].reminders_enabled)
-
-    def test_resumes_when_the_observed_timer_advances_again(self):
-        synchronizer = TimerSynchronizer(
-            tolerance=1.5,
-            confirmation_checks=5,
-            confirmation_wins=3,
-        )
-        synchronizer.observe(10, now=0.0)
-        synchronizer.observe(15, now=5.0)
-        for moment in (10.0, 11.0, 12.0, 13.0, 14.0, 15.0):
-            synchronizer.observe(15, now=moment)
-
-        for value, moment in ((16, 16.0), (17, 17.0), (18, 18.0), (19, 19.0)):
-            synchronizer.observe(value, now=moment)
-        recovered = synchronizer.observe(20, now=20.0)
-
-        self.assertEqual(recovered.mode, "tracking")
-        self.assertTrue(recovered.reminders_enabled)
-        self.assertEqual(recovered.estimated_seconds, 20)
-
-    def test_accepts_a_paused_timer_with_five_matching_reads_in_six_samples(self):
-        synchronizer = TimerSynchronizer(
-            tolerance=1.5,
-            confirmation_checks=5,
-            confirmation_wins=3,
-        )
-        synchronizer.observe(10, now=0.0)
-        synchronizer.observe(15, now=5.0)
+        started = synchronizer.observe(15, now=10.0)
 
         decisions = [
             synchronizer.observe(value, now=moment)
             for value, moment in (
-                (15, 10.0),
-                (None, 11.0),
-                (15, 12.0),
+                (15, 11.0),
+                (None, 12.0),
                 (15, 13.0),
-                (15, 14.0),
+                (16, 14.0),
                 (15, 15.0),
             )
         ]
 
+        self.assertEqual(started.mode, "pause_checking")
+        self.assertTrue(started.reminders_enabled)
         self.assertEqual(decisions[-1].mode, "paused")
+        self.assertEqual(decisions[-1].mismatch_count, 5)
         self.assertFalse(decisions[-1].reminders_enabled)
+
+    def test_resumes_and_reanchors_from_the_first_advancing_timer_read(self):
+        synchronizer = TimerSynchronizer()
+        synchronizer.observe(10, now=0.0)
+        synchronizer.observe(15, now=5.0)
+        synchronizer.observe(15, now=10.0)
+        for moment in (11.0, 12.0, 13.0, 14.0, 15.0):
+            synchronizer.observe(15, now=moment)
+        recovered = synchronizer.observe(16, now=16.0)
+
+        self.assertEqual(recovered.mode, "tracking")
+        self.assertTrue(recovered.reminders_enabled)
+        self.assertEqual(recovered.estimated_seconds, 16)
+
+    def test_does_not_begin_a_pause_check_until_two_timer_reads_match(self):
+        synchronizer = TimerSynchronizer()
+        synchronizer.observe(10, now=0.0)
+        synchronizer.observe(15, now=5.0)
+        changing = synchronizer.observe(16, now=10.0)
+        unchanged = synchronizer.observe(16, now=15.0)
+
+        self.assertEqual(changing.mode, "tracking")
+        self.assertEqual(unchanged.mode, "pause_checking")
 
 
 class AgeProgressionTests(unittest.TestCase):

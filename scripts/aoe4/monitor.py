@@ -66,144 +66,95 @@ class TimerDecision:
 
 
 class TimerSynchronizer:
-    """Maintain a local game-time estimate and gate reminders on OCR confidence."""
+    """Run a smooth local timer and use OCR solely to confirm game pauses."""
 
-    def __init__(
-        self,
-        tolerance,
-        confirmation_checks,
-        confirmation_wins,
-        pause_confirmation_checks=6,
-        pause_confirmation_wins=5,
-    ):
-        self.tolerance = tolerance
-        self.confirmation_checks = confirmation_checks
-        self.confirmation_wins = confirmation_wins
+    def __init__(self, pause_confirmation_checks=5, pause_confirmation_wins=3):
         self.pause_confirmation_checks = pause_confirmation_checks
         self.pause_confirmation_wins = pause_confirmation_wins
         self.anchor_game_seconds = None
         self.anchor_monotonic = None
-        self.mode = "starting"
+        self.last_observed_seconds = None
         self.paused_seconds = None
-        self.confirmation = None
-        self.confirmation_count = 0
+        self.pause_observations = []
+        self.mode = "starting"
 
     def estimated_seconds(self, now):
         if self.anchor_game_seconds is None:
             return None
+        if self.mode == "paused":
+            return self.paused_seconds
         return self.anchor_game_seconds + (now - self.anchor_monotonic)
 
     def _decision(self, mode, now, reminders_enabled):
         return TimerDecision(
             mode,
             self.estimated_seconds(now),
-            len(self.confirmation["observations"])
-            if self.confirmation
-            else self.confirmation_count,
+            len(self.pause_observations),
             reminders_enabled,
         )
 
-    def _anchor_tracking(self, observed_seconds, now):
+    def _start_tracking(self, observed_seconds, now):
         self.anchor_game_seconds = observed_seconds
         self.anchor_monotonic = now
+        self.last_observed_seconds = observed_seconds
         self.paused_seconds = None
-        self.confirmation = None
-        self.confirmation_count = 0
+        self.pause_observations = []
         self.mode = "tracking"
         return TimerDecision("tracking", observed_seconds, 0, True)
 
-    def _begin_confirmation(self, observed_seconds, now, paused_baseline=None):
-        self.mode = "resyncing"
-        self.confirmation_count = 0
-        self.confirmation = {
-            "observations": [],
-            "trackingVotes": 0,
-            "pausedVotes": 0,
-            "resumedVotes": 0,
-            "pauseCandidate": paused_baseline
-            if paused_baseline is not None
-            else observed_seconds,
-        }
-        return self._record_confirmation(observed_seconds, now)
+    def _start_pause_check(self):
+        self.mode = "pause_checking"
+        self.pause_observations = []
 
-    def _record_confirmation(self, observed_seconds, now):
-        confirmation = self.confirmation
-        confirmation["observations"].append(observed_seconds)
-        self.confirmation_count = len(confirmation["observations"])
-        expected = self.estimated_seconds(now)
-        pause_candidate = confirmation["pauseCandidate"]
+    def _record_pause_check(self, observed_seconds, now):
+        self.pause_observations.append(observed_seconds)
+        if len(self.pause_observations) < self.pause_confirmation_checks:
+            return self._decision("pause_checking", now, True)
+
+        matches = sum(
+            observed == self.last_observed_seconds
+            for observed in self.pause_observations
+        )
+        if matches >= self.pause_confirmation_wins:
+            self.paused_seconds = self.last_observed_seconds
+            self.anchor_game_seconds = self.paused_seconds
+            self.anchor_monotonic = now
+            self.pause_observations = []
+            self.mode = "paused"
+            return TimerDecision("paused", self.paused_seconds, self.pause_confirmation_checks, False)
 
         if observed_seconds is not None:
-            if expected is not None and abs(observed_seconds - expected) <= self.tolerance:
-                confirmation["trackingVotes"] += 1
-            if (
-                pause_candidate is not None
-                and abs(observed_seconds - pause_candidate) <= self.tolerance
-            ):
-                confirmation["pausedVotes"] += 1
-            if pause_candidate is not None and observed_seconds > pause_candidate:
-                confirmation["resumedVotes"] += 1
-
-        observations = [value for value in confirmation["observations"] if value is not None]
-        latest_observation = observations[-1] if observations else None
-        if len(confirmation["observations"]) >= self.confirmation_checks:
-            if (
-                confirmation["trackingVotes"] >= self.confirmation_wins
-                and latest_observation is not None
-            ):
-                return self._anchor_tracking(latest_observation, now)
-            if (
-                confirmation["resumedVotes"] >= self.confirmation_wins
-                and latest_observation is not None
-            ):
-                return self._anchor_tracking(latest_observation, now)
-        if (
-            len(confirmation["observations"]) >= self.pause_confirmation_checks
-            and confirmation["pausedVotes"] >= self.pause_confirmation_wins
-        ):
-            self.paused_seconds = pause_candidate
-            self.confirmation = None
-            self.mode = "paused"
-            return TimerDecision("paused", pause_candidate, self.confirmation_count, False)
-
-        if len(confirmation["observations"]) < self.pause_confirmation_checks:
-            return self._decision("resyncing", now, True)
-
-        return self._begin_confirmation(latest_observation, now, self.paused_seconds)
+            self.last_observed_seconds = observed_seconds
+        self.pause_observations = []
+        self.mode = "tracking"
+        return self._decision("tracking", now, True)
 
     def observe(self, observed_seconds, now):
         if self.anchor_game_seconds is None:
             if observed_seconds is None:
                 return TimerDecision("starting", None, 0, False)
-            self.anchor_game_seconds = observed_seconds
-            self.anchor_monotonic = now
-            self.mode = "tracking"
-            return TimerDecision("tracking", observed_seconds, 0, True)
+            return self._start_tracking(observed_seconds, now)
 
         if self.mode == "tracking":
-            estimated = self.estimated_seconds(now)
-            if observed_seconds is not None and abs(observed_seconds - estimated) <= self.tolerance:
-                return self._anchor_tracking(observed_seconds, now)
-            return self._begin_confirmation(observed_seconds, now)
+            if observed_seconds is None:
+                return self._decision("tracking", now, True)
+            if observed_seconds == self.last_observed_seconds:
+                self._start_pause_check()
+                return self._decision("pause_checking", now, True)
+            self.last_observed_seconds = observed_seconds
+            return self._decision("tracking", now, True)
 
         if self.mode == "paused":
-            if (
-                observed_seconds is None
-                or observed_seconds == self.paused_seconds
-            ):
+            if observed_seconds is None or observed_seconds <= self.paused_seconds:
                 return TimerDecision(
                     "paused",
                     self.paused_seconds,
-                    self.confirmation_count,
+                    0,
                     False,
                 )
-            return self._begin_confirmation(
-                observed_seconds,
-                now,
-                paused_baseline=self.paused_seconds,
-            )
+            return self._start_tracking(observed_seconds, now)
 
-        return self._record_confirmation(observed_seconds, now)
+        return self._record_pause_check(observed_seconds, now)
 
 
 @dataclass
@@ -446,36 +397,34 @@ def build_disabled_state(decision, age="age_1"):
 
 
 def publish_overlay_state(args, current_state):
-    state = write_overlay_state(
-        args.output,
-        civilization=args.civilization,
-        age=current_state["age"],
-        villager_production_active=current_state["villager_production_active"],
-        villager_reminder=current_state["villager_reminder"],
-        researched_technologies=current_state["researched_technologies"],
-        in_progress_technologies=current_state["in_progress_technologies"],
-        detected_technologies=current_state["detected_technologies"],
-        available_technologies=current_state["available_technologies"],
-        locked_technologies=current_state["locked_technologies"],
-        reminders_paused=current_state["reminders_paused"],
-        session=current_state["session"],
-    )
+    try:
+        state = write_overlay_state(
+            args.output,
+            civilization=args.civilization,
+            age=current_state["age"],
+            villager_production_active=current_state["villager_production_active"],
+            villager_reminder=current_state["villager_reminder"],
+            researched_technologies=current_state["researched_technologies"],
+            in_progress_technologies=current_state["in_progress_technologies"],
+            detected_technologies=current_state["detected_technologies"],
+            available_technologies=current_state["available_technologies"],
+            locked_technologies=current_state["locked_technologies"],
+            reminders_paused=current_state["reminders_paused"],
+            session=current_state["session"],
+        )
+    except OSError as exc:
+        print(f"overlay state publish failed: {exc}", flush=True)
+        return
     print({"overlayState": state}, flush=True)
 
 
 def command_watch_monitor(args):
     if (
         args.timer_interval <= 0
-        or args.resync_interval <= 0
+        or args.pause_check_interval <= 0
         or args.queue_interval <= 0
     ):
-        raise RuntimeError("timer, resource, and queue intervals must be greater than zero")
-    if args.timer_tolerance < 0:
-        raise RuntimeError("timer tolerance cannot be negative")
-    if args.timer_confirmation_checks < 1:
-        raise RuntimeError("timer confirmation checks must be at least one")
-    if not 1 <= args.timer_confirmation_wins <= args.timer_confirmation_checks:
-        raise RuntimeError("timer confirmation wins must fit within the check count")
+        raise RuntimeError("timer, pause-check, and queue intervals must be greater than zero")
     if args.pause_confirmation_checks < 1:
         raise RuntimeError("pause confirmation checks must be at least one")
     if not 1 <= args.pause_confirmation_wins <= args.pause_confirmation_checks:
@@ -515,9 +464,6 @@ def command_watch_monitor(args):
         [args.civilization],
     )
     synchronizer = TimerSynchronizer(
-        args.timer_tolerance,
-        args.timer_confirmation_checks,
-        args.timer_confirmation_wins,
         args.pause_confirmation_checks,
         args.pause_confirmation_wins,
     )
@@ -554,9 +500,6 @@ def command_watch_monitor(args):
             controls = read_overlay_controls(args.controls)
             if controls["resetToken"] is not None and controls["resetToken"] != last_reset_token:
                 synchronizer = TimerSynchronizer(
-                    args.timer_tolerance,
-                    args.timer_confirmation_checks,
-                    args.timer_confirmation_wins,
                     args.pause_confirmation_checks,
                     args.pause_confirmation_wins,
                 )
@@ -628,7 +571,7 @@ def command_watch_monitor(args):
                         if age_decision.pending
                         else args.age_interval
                     )
-                    if synchronizer.mode in {"tracking", "resyncing"}:
+                    if synchronizer.mode in {"tracking", "pause_checking"}:
                         current_state["age"] = display_age(age_decision.age)
                         apply_technology_state(
                             current_state,
@@ -654,7 +597,7 @@ def command_watch_monitor(args):
                     next_timer_check = now + (
                         args.timer_interval
                         if decision.mode == "tracking"
-                        else args.resync_interval
+                        else args.pause_check_interval
                     )
                     if decision.reminders_enabled:
                         next_queue_check = now
@@ -672,7 +615,7 @@ def command_watch_monitor(args):
                         flush=True,
                     )
 
-            if synchronizer.mode in {"tracking", "resyncing"} and now >= next_queue_check:
+            if synchronizer.mode in {"tracking", "pause_checking"} and now >= next_queue_check:
                 queue_frame = grab_region_bgr(queue_rect)
                 villager_result = match_villager_icon(
                     crop_production_queue(
@@ -768,12 +711,9 @@ def add_monitor_args(parser):
     parser.add_argument("--timer-scale", type=float, default=4.0)
     parser.add_argument("--tesseract-cmd")
     parser.add_argument("--timer-interval", type=float, default=5.0)
-    parser.add_argument("--resync-interval", type=float, default=1.0)
-    parser.add_argument("--timer-tolerance", type=float, default=1.5)
-    parser.add_argument("--timer-confirmation-checks", type=int, default=5)
-    parser.add_argument("--timer-confirmation-wins", type=int, default=3)
-    parser.add_argument("--pause-confirmation-checks", type=int, default=6)
-    parser.add_argument("--pause-confirmation-wins", type=int, default=5)
+    parser.add_argument("--pause-check-interval", type=float, default=1.0)
+    parser.add_argument("--pause-confirmation-checks", type=int, default=5)
+    parser.add_argument("--pause-confirmation-wins", type=int, default=3)
     parser.add_argument("--age-interval", type=float, default=5.0)
     parser.add_argument("--age-confirmation-interval", type=float, default=1.0)
     parser.add_argument("--age-confirmation-checks", type=int, default=3)
