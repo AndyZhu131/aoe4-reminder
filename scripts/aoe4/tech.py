@@ -91,6 +91,8 @@ def load_technology_catalog(catalog_path, template_root, categories, civilizatio
                 "civilization": entry_civilization,
                 "ageAvailable": entry.get("ageAvailable"),
                 "building": entry.get("building"),
+                "prerequisites": entry.get("prerequisites", []),
+                "previewBeforeAge": entry.get("previewBeforeAge", False),
                 "templates": templates,
             }
         )

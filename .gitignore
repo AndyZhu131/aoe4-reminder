@@ -8,3 +8,5 @@ scripts/__pycache__/
 tests/fixtures/template_matching/*-match.png
 frontend/node_modules/
 runtime/overlay-state.json
+runtime/overlay-controls.json
+runtime/monitor-smoke.json

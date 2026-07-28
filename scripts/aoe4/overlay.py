@@ -18,8 +18,13 @@ def write_overlay_state(
     civilization="sis",
     age="unknown",
     villager_production_active=None,
+    villager_reminder=None,
     researched_technologies=None,
     in_progress_technologies=None,
+    detected_technologies=None,
+    available_technologies=None,
+    locked_technologies=None,
+    reminders_paused=False,
     session=None,
 ):
     state = {
@@ -27,9 +32,16 @@ def write_overlay_state(
         "civilization": civilization,
         "age": age,
         "villagerProductionActive": villager_production_active,
+        "villagerReminder": villager_reminder,
         "researchedTechnologies": researched_technologies or [],
         "inProgressTechnologies": in_progress_technologies or [],
+        "detectedTechnologies": detected_technologies or [],
+        "remindersPaused": reminders_paused,
     }
+    if available_technologies is not None:
+        state["availableTechnologies"] = available_technologies
+    if locked_technologies is not None:
+        state["lockedTechnologies"] = locked_technologies
     if session is not None:
         state["session"] = session
 

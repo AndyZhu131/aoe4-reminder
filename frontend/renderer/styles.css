@@ -41,12 +41,7 @@ body,
 }
 
 .overlay--quiet .rail {
-  opacity: 0.42;
-}
-
-.overlay--quiet .rail:hover,
-.overlay--quiet .rail:focus-within {
-  opacity: 1;
+  background: rgba(9, 13, 17, 0.16);
 }
 
 .overlay--urgent .rail {
@@ -191,6 +186,16 @@ body,
   border-bottom: 1px solid rgba(255, 189, 86, 0.46);
 }
 
+.villager-alert--active {
+  border-top-color: rgba(116, 211, 196, 0.32);
+  border-bottom-color: rgba(116, 211, 196, 0.32);
+}
+
+.villager-alert--active img {
+  filter: grayscale(1) brightness(0.65);
+  opacity: 0.68;
+}
+
 .overlay--flashing .villager-alert {
   animation: villager-pulse 1.15s ease-in-out infinite;
 }
@@ -201,6 +206,36 @@ body,
   image-rendering: auto;
   filter: drop-shadow(0 0 11px rgba(255, 184, 73, 0.78));
 }
+
+.reminder-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 7px;
+  padding: 0 12px 10px;
+}
+
+.reminder-action {
+  height: 30px;
+  border: 1px solid rgba(180, 225, 224, 0.26);
+  background: rgba(4, 7, 9, 0.24);
+  color: #d9e7e6;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.reminder-action:hover,
+.reminder-action:focus-visible {
+  border-color: rgba(101, 210, 215, 0.84);
+  background: rgba(41, 86, 93, 0.72);
+  outline: none;
+}
+
+.reminder-action:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 
 .technology-section {
   padding: 9px 12px 12px;
@@ -252,10 +287,19 @@ body,
   object-fit: cover;
 }
 
-.technology--active {
-  border-color: rgba(116, 211, 196, 0.95);
-  box-shadow: inset 0 0 0 1px rgba(116, 211, 196, 0.5);
-  opacity: 0.4;
+.technology--detected {
+  border-color: rgba(255, 96, 86, 0.98);
+  box-shadow: inset 0 0 0 1px rgba(255, 96, 86, 0.55);
+}
+
+.technology--locked {
+  border-color: rgba(175, 188, 190, 0.12);
+  background: rgba(3, 5, 6, 0.36);
+}
+
+.technology--locked img {
+  filter: grayscale(1) brightness(0.62);
+  opacity: 0.42;
 }
 
 @keyframes villager-pulse {

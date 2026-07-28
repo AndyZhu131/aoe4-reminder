@@ -1,8 +1,31 @@
 {
   "version": 1,
   "civilization": "sis",
-  "age": "age_2",
+  "age": "age_1",
   "villagerProductionActive": false,
-  "researchedTechnologies": ["wheelbarrow"],
-  "inProgressTechnologies": ["wood_1"]
+  "villagerReminder": true,
+  "remindersPaused": false,
+  "researchedTechnologies": [],
+  "inProgressTechnologies": [],
+  "detectedTechnologies": [],
+  "availableTechnologies": [
+    "wheelbarrow"
+  ],
+  "lockedTechnologies": [
+    "wood_1",
+    "food_1",
+    "mine_1",
+    "survivalTechnique",
+    "melee_def_1",
+    "melee_atk_1",
+    "range_def_1",
+    "range_atk_1",
+    "militaryAcademy",
+    "siege"
+  ],
+  "session": {
+    "status": "starting",
+    "estimatedTimer": "00:00",
+    "timerMismatchCount": 0
+  }
 }

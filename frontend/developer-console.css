@@ -1,0 +1,73 @@
+:root {
+  color: #e5efee;
+  background: #11161a;
+  font-family: Consolas, "Courier New", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+main {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+main {
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  border-bottom: 1px solid rgba(180, 225, 224, 0.18);
+  color: #b9d9d7;
+  font-family: Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+#log {
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  color: #dfe9e8;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-line {
+  min-height: 18px;
+}
+
+.log-prefix {
+  color: #80908f;
+}
+
+.log-line--age {
+  color: #f4c75b;
+}
+
+.log-line--technology {
+  color: #75d3b4;
+}
+
+.log-technology-name {
+  color: #f4c75b;
+  font-weight: 700;
+}
+
+.log-line--villager-alert {
+  color: #ff766d;
+}
+
+.log-event {
+  font-weight: 700;
+}
