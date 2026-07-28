@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,6 +13,7 @@ from aoe4.monitor import (
     ResearchProgressTracker,
     TimerSynchronizer,
     available_technology_keys,
+    clear_debug_events,
     locked_technology_keys,
     scaled_template_scales,
     should_remind_villager,
@@ -20,12 +22,29 @@ from aoe4.common import load_region
 from aoe4.cli import build_parser
 from aoe4.villager import queue_geometry
 from aoe4.age import age_capture_layout, resolve_age_timer_rect
+from aoe4.tech import (
+    DEFAULT_TECH_CATALOG,
+    DEFAULT_TECH_TEMPLATE_ROOT,
+    load_technology_catalog,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class CalibrationProfileTests(unittest.TestCase):
+    def test_reset_debug_cleanup_removes_prior_event_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            debug_dir = Path(directory) / "debug-events"
+            debug_dir.mkdir()
+            (debug_dir / "age-up.png").write_bytes(b"image")
+            nested_dir = debug_dir / "prior-session"
+            nested_dir.mkdir()
+            (nested_dir / "research.json").write_text("{}", encoding="utf-8")
+
+            self.assertEqual(clear_debug_events(debug_dir), 2)
+            self.assertEqual(list(debug_dir.iterdir()), [])
+
     def test_scaled_profiles_rebase_to_the_selected_monitor(self):
         monitor = {"left": -1920, "top": 120}
 
@@ -47,6 +66,22 @@ class CalibrationProfileTests(unittest.TestCase):
         )
 
         self.assertEqual(args.monitor, 1)
+
+    def test_monitor_debug_events_can_be_enabled_with_a_custom_output_directory(self):
+        args = build_parser().parse_args(
+            [
+                "watch-monitor",
+                "--once",
+                "--debug-events",
+                "--debug-event-dir",
+                "captures/diagnostics",
+            ]
+        )
+
+        self.assertTrue(args.debug_events)
+        self.assertEqual(args.debug_event_dir, "captures/diagnostics")
+        self.assertEqual(args.age_confirmation_checks, 5)
+        self.assertEqual(args.age_confirmation_wins, 4)
 
     def test_villager_queue_geometry_scales_with_the_profile(self):
         self.assertEqual(queue_geometry(0.75), (36, 8, 44))
@@ -137,50 +172,59 @@ class TimerSynchronizerTests(unittest.TestCase):
 
 
 class AgeProgressionTests(unittest.TestCase):
-    def test_accepts_the_first_recognized_age_and_never_moves_backward(self):
-        progression = AgeProgression(confirmation_checks=5, confirmation_wins=3)
+    def test_starts_in_age_one_and_rejects_skipped_ages(self):
+        progression = AgeProgression(confirmation_checks=3, confirmation_wins=2)
 
-        initial = progression.observe("age_2")
+        skipped = progression.observe("age_4")
         lower = progression.observe("age_1")
         missing = progression.observe(None)
 
-        self.assertEqual(initial.age, "age_2")
-        self.assertEqual(lower.age, "age_2")
-        self.assertEqual(missing.age, "age_2")
+        self.assertEqual(skipped.age, "age_1")
+        self.assertEqual(lower.age, "age_1")
+        self.assertEqual(missing.age, "age_1")
 
     def test_confirms_an_age_up_after_a_two_of_three_majority(self):
         progression = AgeProgression(confirmation_checks=3, confirmation_wins=2)
-        progression.observe("age_2")
 
         decisions = [
             progression.observe(age)
-            for age in ("age_3", None, "age_3")
+            for age in ("age_2", None, "age_2")
         ]
 
         self.assertTrue(decisions[0].pending)
         self.assertTrue(decisions[1].pending)
-        self.assertEqual(decisions[-1].age, "age_3")
+        self.assertEqual(decisions[-1].age, "age_2")
         self.assertFalse(decisions[-1].pending)
 
     def test_discards_an_age_up_without_a_two_of_three_majority(self):
         progression = AgeProgression(confirmation_checks=3, confirmation_wins=2)
+
         progression.observe("age_2")
+        progression.observe(None)
+        rejected = progression.observe("age_1")
+
+        self.assertEqual(rejected.age, "age_1")
+        self.assertFalse(rejected.pending)
+
+    def test_current_age_read_cancels_a_pending_advance(self):
+        progression = AgeProgression(confirmation_checks=3, confirmation_wins=2)
+        for age in ("age_2", None, "age_2"):
+            progression.observe(age)
 
         progression.observe("age_3")
-        progression.observe(None)
-        rejected = progression.observe("age_2")
+        progression.observe("age_3")
+        cancelled = progression.observe("age_2")
 
-        self.assertEqual(rejected.age, "age_2")
-        self.assertFalse(rejected.pending)
+        self.assertEqual(cancelled.age, "age_2")
+        self.assertFalse(cancelled.pending)
 
     def test_discards_an_unconfirmed_age_transition(self):
         progression = AgeProgression(confirmation_checks=5, confirmation_wins=3)
-        progression.observe("age_2")
 
-        for age in ("age_3", None, "age_2", "age_3", None):
+        for age in ("age_2", None, "age_1", None, "age_1"):
             decision = progression.observe(age)
 
-        self.assertEqual(decision.age, "age_2")
+        self.assertEqual(decision.age, "age_1")
         self.assertFalse(decision.pending)
 
 
@@ -217,6 +261,16 @@ class TechnologyReminderTests(unittest.TestCase):
         {"key": "wood_2", "ageAvailable": "castle", "prerequisites": ["wood_1"]},
         {"key": "wood_3", "ageAvailable": "imperial", "prerequisites": ["wood_2"]},
     ]
+
+    def test_sis_catalog_references_only_existing_templates(self):
+        _, missing_templates = load_technology_catalog(
+            Path(DEFAULT_TECH_CATALOG),
+            DEFAULT_TECH_TEMPLATE_ROOT,
+            ["economy", "military"],
+            ["sis"],
+        )
+
+        self.assertEqual(missing_templates, [])
 
     def test_only_age_one_technologies_are_available_in_age_one(self):
         self.assertEqual(

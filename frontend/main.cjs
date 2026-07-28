@@ -9,6 +9,7 @@ const catalogPath = path.join(appRoot, "data", "technologies.json");
 const runtimeStatePath = path.join(appRoot, "runtime", "overlay-state.json");
 const runtimeControlsPath = path.join(appRoot, "runtime", "overlay-controls.json");
 const exampleStatePath = path.join(appRoot, "runtime", "overlay-state.example.json");
+const debugEventsPath = path.join(appRoot, "captures", "debug-events");
 const resolutionProfilesPath = path.join(appRoot, "data", "resolution-profiles.json");
 const calibrationPaths = {
   "1920x1080": path.join(appRoot, "config", "calibration.1920x1080.json"),
@@ -41,8 +42,16 @@ let captureSettings = { resolution: "2560x1440", monitor: 1 };
 let calibrationProcess;
 let monitorProcess;
 let developerWindow;
+let quitCleanupStarted = false;
 const developerLogLines = [];
 const maxDeveloperLogLines = 500;
+const preferredWindowsPython = "C:\\Python313\\python.exe";
+
+function pythonCommand() {
+  if (process.platform !== "win32") return "python3";
+  return process.env.AOE4_PYTHON
+    || (fs.existsSync(preferredWindowsPython) ? preferredWindowsPython : "python.exe");
+}
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -97,6 +106,25 @@ function appendDeveloperLog(source, message) {
   }
 }
 
+function clearDebugEvents() {
+  try {
+    if (!fs.existsSync(debugEventsPath)) return 0;
+    const entries = fs.readdirSync(debugEventsPath, { withFileTypes: true });
+    for (const entry of entries) {
+      fs.rmSync(path.join(debugEventsPath, entry.name), {
+        force: true,
+        recursive: entry.isDirectory(),
+        maxRetries: 3,
+        retryDelay: 100,
+      });
+    }
+    return entries.length;
+  } catch (error) {
+    appendDeveloperLog("overlay", `debug event cleanup failed: ${error.message}`);
+    return null;
+  }
+}
+
 function readState() {
   for (const candidate of [runtimeStatePath, exampleStatePath]) {
     try {
@@ -121,7 +149,7 @@ function readCatalog() {
 function savedPosition() {
   try {
     const position = readJson(path.join(app.getPath("userData"), "overlay-position.json"));
-    return position.layout === overlayLayout && position.resolution === captureSettings.resolution
+    return position.layout === overlayLayout && position.monitor === captureSettings.monitor
       ? position
       : null;
   } catch {
@@ -217,7 +245,7 @@ function persistPosition() {
   const [x, y] = overlayWindow.getPosition();
   fs.writeFileSync(
     path.join(app.getPath("userData"), "overlay-position.json"),
-    JSON.stringify({ x, y, layout: overlayLayout, resolution: captureSettings.resolution }, null, 2),
+    JSON.stringify({ x, y, layout: overlayLayout, monitor: captureSettings.monitor }, null, 2),
   );
 }
 
@@ -248,7 +276,7 @@ function launchCalibration() {
     return Promise.resolve({ started: false, message: "Calibration is already running." });
   }
 
-  const python = process.platform === "win32" ? "python.exe" : "python3";
+  const python = pythonCommand();
   const child = spawn(
     python,
     [
@@ -316,7 +344,7 @@ function openDeveloperConsole() {
 function launchMonitor() {
   if (monitorProcess) return;
 
-  const python = process.platform === "win32" ? "python.exe" : "python3";
+  const python = pythonCommand();
   const child = spawn(python, [
     "scripts/aoe4_assistant.py",
     "watch-monitor",
@@ -326,6 +354,7 @@ function launchMonitor() {
     captureSettings.resolution,
     "--config",
     calibrationPathForResolution(),
+    "--debug-events",
   ], {
     cwd: appRoot,
     stdio: ["ignore", "pipe", "pipe"],
@@ -405,7 +434,7 @@ app.whenReady().then(() => {
   ipcMain.handle("overlay:hide", () => overlayWindow?.hide());
   ipcMain.handle("overlay:close", () => app.quit());
   ipcMain.handle("overlay:set-capture-settings", (_event, settings) => {
-    const previousResolution = captureSettings.resolution;
+    const previousMonitor = captureSettings.monitor;
     captureSettings = {
       resolution: templateResolutions.has(settings?.resolution)
         ? settings.resolution
@@ -417,10 +446,10 @@ app.whenReady().then(() => {
       "overlay",
       `capture settings monitor=${captureSettings.monitor} resolution=${captureSettings.resolution}`,
     );
-    if (captureSettings.resolution !== previousResolution && overlayWindow) {
+    if (captureSettings.monitor !== previousMonitor && overlayWindow) {
       const position = defaultPosition();
-      overlayWindow.setSize(railSize.width, railSize.height);
       overlayWindow.setPosition(position.x, position.y);
+      persistPosition();
     }
     restartMonitor();
     return captureSettings;
@@ -438,13 +467,17 @@ app.whenReady().then(() => {
     return remindersPaused;
   });
   ipcMain.handle("overlay:reset-reminders", () => {
+    const clearedDebugEvents = clearDebugEvents();
     remindersPaused = false;
     writeOverlayControls({
       paused: false,
       resetToken: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     });
     latestState = defaultState();
-    appendDeveloperLog("overlay", "reminder session reset requested");
+    appendDeveloperLog(
+      "overlay",
+      `reminder session reset requested; debug events cleared=${clearedDebugEvents ?? "failed"}`,
+    );
     overlayWindow?.webContents.send("overlay:state", latestState);
     overlayWindow?.webContents.send("overlay:paused", remindersPaused);
     return remindersPaused;
@@ -466,8 +499,28 @@ app.whenReady().then(() => {
   globalShortcut.register("CommandOrControl+Alt+O", toggleOverlayVisibility);
 });
 
-app.on("will-quit", () => {
-  fs.unwatchFile(runtimeStatePath);
-  globalShortcut.unregisterAll();
-  monitorProcess?.kill();
+app.on("before-quit", (event) => {
+  if (quitCleanupStarted) return;
+  event.preventDefault();
+  quitCleanupStarted = true;
+  let quitFinished = false;
+
+  const finishQuit = () => {
+    if (quitFinished) return;
+    quitFinished = true;
+    fs.unwatchFile(runtimeStatePath);
+    globalShortcut.unregisterAll();
+    clearDebugEvents();
+    app.quit();
+  };
+
+  if (!monitorProcess) {
+    finishQuit();
+    return;
+  }
+
+  const child = monitorProcess;
+  child.once("exit", finishQuit);
+  child.kill();
+  setTimeout(finishQuit, 800);
 });

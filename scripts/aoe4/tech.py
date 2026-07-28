@@ -18,6 +18,7 @@ from .common import (
 
 
 RESEARCH_READER = "tech-template-catalog"
+RESEARCH_MATCH_METHOD = "TM_CCOEFF_NORMED"
 DEFAULT_TECH_CATALOG = "data/technologies.json"
 DEFAULT_TECH_TEMPLATE_ROOT = "templates/tech"
 RESEARCH_CAPTURE_RECTS = {
@@ -143,6 +144,9 @@ def research_template_mask(template, border_mask_ratio):
         mask[height - border_y :, :] = 0
     # Queue progress pips vary by research state and are not part of the icon.
     mask[: round(height * 0.28), round(width * 0.58) :] = 0
+    # The bottom queue-status strip also changes as progress advances. It is
+    # outside the artwork and made the older range-attack capture score low.
+    mask[round(height * 0.94) :, :] = 0
     return cv2.merge([mask, mask, mask])
 
 
@@ -220,7 +224,10 @@ def match_research_technologies(frame, technologies, args):
                 result = cv2.matchTemplate(
                     frame,
                     scaled_template,
-                    cv2.TM_CCORR_NORMED,
+                    # Correlation without mean subtraction lets similarly bright
+                    # green terrain score as a match. Coefficient correlation keeps
+                    # the icon artwork's shape and contrast as the deciding signal.
+                    cv2.TM_CCOEFF_NORMED,
                     mask=mask,
                 )
                 result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
@@ -260,6 +267,7 @@ def match_research_technologies(frame, technologies, args):
         ],
         "candidateCount": len(candidates),
         "loadedTemplateCount": loaded_template_count,
+        "matchMethod": RESEARCH_MATCH_METHOD,
         "threshold": args.threshold,
     }
 
@@ -309,6 +317,7 @@ def research_payload(result, elapsed_ms, missing_templates, state_changed=None):
         "detectedKeys": [detection["key"] for detection in result["researching"]],
         "candidateCount": result["candidateCount"],
         "loadedTemplateCount": result["loadedTemplateCount"],
+        "matchMethod": result["matchMethod"],
         "threshold": result["threshold"],
         "elapsedMs": round(elapsed_ms, 2),
     }

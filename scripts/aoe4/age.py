@@ -182,6 +182,10 @@ def match_inline_age_roman(frame):
         center_x, _center_y = centroids[index]
         if area < 8 or component_height < minimum_height:
             continue
+        # Circular age wrappers can leave a tall arc at the crop edge. It is
+        # taller than any Roman glyph and must not be mistaken for a V.
+        if component_height >= height * 0.85:
+            continue
         # The wrapper dashes are short and horizontal, unlike the Roman glyphs.
         if component_width > maximum_width or component_width > component_height:
             continue
@@ -393,9 +397,12 @@ def read_age_and_timer(frame, args):
 
 def parse_age_fixture_name(path):
     match = re.fullmatch(r"(\d{2})-(\d{2})-([1-4])\.png", path.name)
-    if not match:
-        return None
-    return {"timer": f"{match.group(1)}:{match.group(2)}", "age": f"age_{match.group(3)}"}
+    if match:
+        return {"timer": f"{match.group(1)}:{match.group(2)}", "age": f"age_{match.group(3)}"}
+    age_only_match = re.fullmatch(r".+-age-([1-4])\.png", path.name)
+    if age_only_match:
+        return {"timer": None, "age": f"age_{age_only_match.group(1)}"}
+    return None
 
 
 def command_test_age(args):
@@ -415,7 +422,10 @@ def command_test_age(args):
         if frame is None:
             raise RuntimeError(f"could not read fixture: {fixture_path}")
         actual = read_age_and_timer(frame, args)
-        passed = actual["timer"] == expected["timer"] and actual["age"] == expected["age"]
+        timer_matches = (
+            expected["timer"] is None or actual["timer"] == expected["timer"]
+        )
+        passed = timer_matches and actual["age"] == expected["age"]
         results.append(
             {
                 "fixture": fixture_path.name,

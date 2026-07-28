@@ -1,7 +1,9 @@
 import json
+import shutil
 import time
 from collections import deque
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -23,6 +25,7 @@ from .tech import (
     crop_research_queue,
     load_technology_catalog,
     match_research_technologies,
+    save_research_debug_image,
 )
 from .villager import (
     DEFAULT_VILLAGER_TEMPLATE,
@@ -165,46 +168,48 @@ class AgeDecision:
 
 
 class AgeProgression:
-    """Accept only confirmed forward age transitions from the OCR reader."""
+    """Accept only confirmed, one-age-at-a-time forward transitions."""
 
     def __init__(self, confirmation_checks, confirmation_wins):
         self.confirmation_checks = confirmation_checks
         self.confirmation_wins = confirmation_wins
-        self.age = "unknown"
+        self.age = "age_1"
         self.confirmation = None
 
     def observe(self, detected_age):
-        if self.age == "unknown" and detected_age in AGE_TIERS:
-            self.age = detected_age
+        current_tier = AGE_TIERS[self.age]
+        next_age = f"age_{current_tier + 1}"
+        if next_age not in AGE_TIERS:
             return AgeDecision(self.age, False, 0)
 
-        current_tier = AGE_TIERS.get(self.age, 0)
-        detected_tier = AGE_TIERS.get(detected_age, 0)
-        if self.confirmation is None and detected_tier <= current_tier:
+        # A clear reading of the current age is evidence that a tentative
+        # advance was a false positive. Unknown frames remain neutral.
+        if self.confirmation is not None and detected_age == self.age:
+            self.confirmation = None
+            return AgeDecision(self.age, False, 0)
+
+        if self.confirmation is None and detected_age != next_age:
             return AgeDecision(self.age, False, 0)
 
         if self.confirmation is None:
-            self.confirmation = {"observations": [], "votes": {}}
+            self.confirmation = {
+                "candidate": next_age,
+                "observations": [],
+                "votes": 0,
+            }
 
         confirmation = self.confirmation
         confirmation["observations"].append(detected_age)
-        if detected_tier > current_tier:
-            confirmation["votes"][detected_age] = confirmation["votes"].get(detected_age, 0) + 1
+        if detected_age == confirmation["candidate"]:
+            confirmation["votes"] += 1
 
         if len(confirmation["observations"]) < self.confirmation_checks:
             return AgeDecision(self.age, True, len(confirmation["observations"]))
 
-        accepted_age = next(
-            (
-                age
-                for age, votes in sorted(
-                    confirmation["votes"].items(),
-                    key=lambda item: (item[1], AGE_TIERS[item[0]]),
-                    reverse=True,
-                )
-                if votes >= self.confirmation_wins
-            ),
-            None,
+        accepted_age = (
+            confirmation["candidate"]
+            if confirmation["votes"] >= self.confirmation_wins
+            else None
         )
         self.confirmation = None
         if accepted_age:
@@ -418,6 +423,61 @@ def publish_overlay_state(args, current_state):
     print({"overlayState": state}, flush=True)
 
 
+def save_debug_event(args, event, frame, metadata, annotated_frame=None):
+    """Save the exact confirmed-event frame and its matching context."""
+    import cv2
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
+    output_dir = Path(args.debug_event_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    raw_path = output_dir / f"{event}-{timestamp}.png"
+    metadata_path = output_dir / f"{event}-{timestamp}.json"
+    if not cv2.imwrite(str(raw_path), frame):
+        raise RuntimeError(f"could not save debug image: {raw_path}")
+
+    artifacts = {"image": str(raw_path), "metadata": str(metadata_path)}
+    if annotated_frame is not None:
+        annotated_path = output_dir / f"{event}-{timestamp}-matches.png"
+        save_research_debug_image(annotated_frame, metadata["researchResult"], annotated_path)
+        artifacts["matches"] = str(annotated_path)
+
+    metadata_path.write_text(
+        json.dumps(
+            {
+                "event": event,
+                "timestamp": timestamp,
+                "artifacts": artifacts,
+                **metadata,
+            },
+            indent=2,
+            default=str,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    print(f"DEBUG_EVENT: event={event} image={raw_path}", flush=True)
+    return artifacts
+
+
+def clear_debug_events(output_dir):
+    """Remove prior event diagnostics while keeping the output directory available."""
+
+    output_path = Path(output_dir)
+    if not output_path.exists():
+        return 0
+    if not output_path.is_dir():
+        raise RuntimeError(f"debug event path is not a directory: {output_path}")
+
+    removed = 0
+    for child in output_path.iterdir():
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+        removed += 1
+    return removed
+
+
 def command_watch_monitor(args):
     if (
         args.timer_interval <= 0
@@ -499,6 +559,14 @@ def command_watch_monitor(args):
             state_changed = False
             controls = read_overlay_controls(args.controls)
             if controls["resetToken"] is not None and controls["resetToken"] != last_reset_token:
+                try:
+                    cleared_debug_events = clear_debug_events(args.debug_event_dir)
+                    print(
+                        f"DEBUG_EVENTS: cleared={cleared_debug_events}",
+                        flush=True,
+                    )
+                except (OSError, RuntimeError) as exc:
+                    print(f"DEBUG_EVENTS_FAILED: clear error={exc}", flush=True)
                 synchronizer = TimerSynchronizer(
                     args.pause_confirmation_checks,
                     args.pause_confirmation_wins,
@@ -557,7 +625,8 @@ def command_watch_monitor(args):
             if timer_due or age_due:
                 age_frame = grab_region_bgr(age_rect)
                 if age_due:
-                    detected_age, _age_attempts = read_age_roman(age_frame, age_args)
+                    previous_age = age_progression.age
+                    detected_age, age_attempts = read_age_roman(age_frame, age_args)
                     age_decision = age_progression.observe(detected_age)
                     print(
                         "AGE: "
@@ -566,6 +635,27 @@ def command_watch_monitor(args):
                         f"pending={age_decision.pending}",
                         flush=True,
                     )
+                    if (
+                        args.debug_events
+                        and previous_age in AGE_TIERS
+                        and AGE_TIERS.get(age_decision.age, 0) > AGE_TIERS.get(previous_age, 0)
+                    ):
+                        try:
+                            save_debug_event(
+                                args,
+                                "age-up",
+                                age_frame,
+                                {
+                                    "previousAge": previous_age,
+                                    "detectedAge": detected_age,
+                                    "acceptedAge": age_decision.age,
+                                    "ageAttempts": age_attempts,
+                                    "confirmationChecks": args.age_confirmation_checks,
+                                    "confirmationWins": args.age_confirmation_wins,
+                                },
+                            )
+                        except (OSError, RuntimeError, TypeError) as exc:
+                            print(f"DEBUG_EVENT_FAILED: event=age-up error={exc}", flush=True)
                     next_age_check = now + (
                         args.age_confirmation_interval
                         if age_decision.pending
@@ -617,6 +707,7 @@ def command_watch_monitor(args):
 
             if synchronizer.mode in {"tracking", "pause_checking"} and now >= next_queue_check:
                 queue_frame = grab_region_bgr(queue_rect)
+                research_frame = crop_research_queue(queue_frame)
                 villager_result = match_villager_icon(
                     crop_production_queue(
                         queue_frame,
@@ -626,7 +717,7 @@ def command_watch_monitor(args):
                     villager_reader_args(args),
                 )
                 research_result = match_research_technologies(
-                    crop_research_queue(queue_frame),
+                    research_frame,
                     technologies,
                     research_reader_args(args),
                 )
@@ -646,10 +737,40 @@ def command_watch_monitor(args):
                     )
                 elif previous_villager_reminder and not current_state["villager_reminder"]:
                     print("VILLAGER_REMINDER: cleared", flush=True)
+                previous_in_progress = set(research_tracker.in_progress)
                 research_tracker.observe(
                     (detection["key"] for detection in research_result["researching"]),
                     synchronizer.estimated_seconds(now),
                 )
+                confirmed_research = sorted(
+                    research_tracker.in_progress - previous_in_progress
+                )
+                if args.debug_events and confirmed_research:
+                    try:
+                        save_debug_event(
+                            args,
+                            "research-confirmed",
+                            queue_frame,
+                            {
+                                "confirmedResearch": confirmed_research,
+                                "detectedResearch": [
+                                    detection["key"]
+                                    for detection in research_result["researching"]
+                                ],
+                                "researchResult": research_result,
+                                "confirmationChecks": args.research_confirmation_checks,
+                                "confirmationWins": args.research_confirmation_wins,
+                                "estimatedTimer": format_timer(
+                                    synchronizer.estimated_seconds(now)
+                                ),
+                            },
+                            annotated_frame=research_frame,
+                        )
+                    except (OSError, RuntimeError, TypeError) as exc:
+                        print(
+                            f"DEBUG_EVENT_FAILED: event=research-confirmed error={exc}",
+                            flush=True,
+                        )
                 apply_technology_state(
                     current_state,
                     technologies,
@@ -716,8 +837,8 @@ def add_monitor_args(parser):
     parser.add_argument("--pause-confirmation-wins", type=int, default=3)
     parser.add_argument("--age-interval", type=float, default=5.0)
     parser.add_argument("--age-confirmation-interval", type=float, default=1.0)
-    parser.add_argument("--age-confirmation-checks", type=int, default=3)
-    parser.add_argument("--age-confirmation-wins", type=int, default=2)
+    parser.add_argument("--age-confirmation-checks", type=int, default=5)
+    parser.add_argument("--age-confirmation-wins", type=int, default=4)
     parser.add_argument("--queue-interval", type=float, default=1.0)
     parser.add_argument("--villager-template", default=DEFAULT_VILLAGER_TEMPLATE)
     parser.add_argument("--villager-threshold", type=float, default=0.85)
@@ -743,6 +864,8 @@ def add_monitor_args(parser):
     parser.add_argument("--research-confirmation-checks", type=int, default=10)
     parser.add_argument("--research-confirmation-wins", type=int, default=6)
     parser.add_argument("--research-completion-delay", type=float, default=30.0)
+    parser.add_argument("--debug-events", action="store_true")
+    parser.add_argument("--debug-event-dir", default="captures/debug-events")
     parser.add_argument("--once", action="store_true")
 
 

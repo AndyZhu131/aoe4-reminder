@@ -12,6 +12,8 @@ let remindersPaused = false;
 let settingsOpen = false;
 let timerAnchor;
 let captureSettings = { resolution: "2560x1440", monitor: 1 };
+let monitorReady = false;
+let resetPending = false;
 
 function ageTier(age) {
   const match = /^age_([1-4])$/.exec(age || "");
@@ -57,6 +59,10 @@ function timerLabel() {
   return formatTimer(timerAnchor.seconds + elapsed);
 }
 
+function reminderControlsReady(paused) {
+  return paused || (monitorReady && !resetPending && state.session?.status !== "starting");
+}
+
 function techIsAvailable(technology) {
   if (state.availableTechnologies !== undefined) {
     return state.availableTechnologies.includes(technology.key);
@@ -99,6 +105,7 @@ function render() {
   );
   const villagerIdle = state.villagerReminder ?? state.villagerProductionActive === false;
   const paused = state.remindersPaused ?? remindersPaused;
+  const controlsReady = reminderControlsReady(paused);
   overlay.className = [
     "overlay",
     !paused && villagerIdle ? "overlay--urgent" : "overlay--quiet",
@@ -144,8 +151,8 @@ function render() {
             <div class="age-marker" title="Current age"><span>Age</span><strong>${ageLabel(state.age)}</strong></div>
           </div>
           <div class="reminder-actions">
-            <button class="reminder-action" id="pause-reminders-button" type="button" title="${paused ? "Resume reminders" : "Pause reminders"}" aria-label="${paused ? "Resume reminders" : "Pause reminders"}" aria-pressed="${paused}">${paused ? "&#9654;" : "&#10074;&#10074;"}</button>
-            <button class="reminder-action" id="reset-reminders-button" type="button" title="Reset reminder session" aria-label="Reset reminder session">&#8635;</button>
+            <button class="reminder-action" id="pause-reminders-button" type="button" title="${paused ? "Resume reminders" : "Pause reminders"}" aria-label="${paused ? "Resume reminders" : "Pause reminders"}" aria-pressed="${paused}" ${controlsReady ? "" : "disabled"}>${paused ? "&#9654;" : "&#10074;&#10074;"}</button>
+            <button class="reminder-action" id="reset-reminders-button" type="button" title="Reset reminder session" aria-label="Reset reminder session" ${controlsReady ? "" : "disabled"}>&#8635;</button>
           </div>
           <div class="villager-alert ${villagerIdle ? "villager-alert--idle" : "villager-alert--active"}" title="${villagerIdle ? "Villager production is idle" : "Villager production is active"}">
             <img src="${villagerIconUrl}" alt="" />
@@ -176,13 +183,16 @@ function render() {
   document.getElementById("hide-button").addEventListener("click", () => window.aoeOverlay.hide());
   document.getElementById("close-button").addEventListener("click", () => window.aoeOverlay.close());
   document.getElementById("pause-reminders-button").addEventListener("click", async () => {
+    if (!reminderControlsReady(paused)) return;
     remindersPaused = await window.aoeOverlay.setRemindersPaused(!paused);
     state = { ...state, remindersPaused };
     console.info(`[overlay] reminders ${remindersPaused ? "paused" : "resumed"}`);
     render();
   });
   document.getElementById("reset-reminders-button").addEventListener("click", async (event) => {
+    if (!reminderControlsReady(paused)) return;
     event.currentTarget.disabled = true;
+    resetPending = true;
     remindersPaused = await window.aoeOverlay.resetReminders();
     state = { ...state, remindersPaused };
     syncTimerAnchor(state);
@@ -236,6 +246,10 @@ async function start() {
     state = nextState;
     syncTimerAnchor(state);
     remindersPaused = nextState.remindersPaused ?? remindersPaused;
+    if (nextState.session?.status === "tracking") {
+      monitorReady = true;
+      resetPending = false;
+    }
     render();
   });
   window.aoeOverlay.onPaused((paused) => {
