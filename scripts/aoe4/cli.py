@@ -4,7 +4,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from aoe4.age import command_capture_age, command_test_age, command_watch_age
+from aoe4.age import command_capture_age, command_test_age, command_watch_age, load_monitor
 from aoe4.calibration import command_calibrate
 from aoe4.overlay import (
     OVERLAY_AGES,
@@ -16,14 +16,18 @@ from aoe4.monitor import add_monitor_args, command_watch_monitor
 from aoe4.technology_catalog import add_inject_technologies_args, command_inject_technologies
 from aoe4.common import (
     REGIONS,
+    RESOLUTION_MULTIPLIERS,
     capture_region_to_png,
     command_monitors,
     match_template,
+    load_json,
+    load_region,
     parse_rect,
     parse_scales,
     resolve_rect,
     wait_before_capture,
     run_windows_hotkey_session,
+    resolution_multiplier,
 )
 from aoe4.resources import command_test_resources, command_watch_resources
 from aoe4.tech import (
@@ -57,7 +61,13 @@ def command_capture(args):
 def capture_queue_once(args):
     output_dir = Path(args.output_dir)
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
-    rect = args.rect or resolve_rect(args)
+    if args.rect:
+        rect = args.rect
+    else:
+        config = load_json(Path(args.config)) or {}
+        monitor_index = args.monitor if args.monitor is not None else config.get("monitor")
+        monitor = load_monitor(int(monitor_index)) if monitor_index is not None else None
+        rect = load_region(Path(args.config), "globalQueue", monitor)
     source_path = output_dir / f"globalQueue-{timestamp}.png"
     capture_region_to_png(rect, source_path)
     research_path = output_dir / f"research-icon-{timestamp}.png"
@@ -65,6 +75,7 @@ def capture_queue_once(args):
         source_path,
         research_path,
         args.research_row,
+        resolution_multiplier(args.template_resolution),
     )
     print(f"Captured globalQueue {rect} -> {source_path}", file=sys.stderr)
     print(
@@ -144,6 +155,12 @@ def add_region_args(parser):
 
 def add_villager_args(parser):
     parser.add_argument("--config", default="config/calibration.2560x1440.json")
+    parser.add_argument("--monitor", type=int)
+    parser.add_argument(
+        "--template-resolution",
+        choices=sorted(RESOLUTION_MULTIPLIERS),
+        default="2560x1440",
+    )
     parser.add_argument("--rect", type=parse_rect)
     parser.add_argument("--template", default=DEFAULT_VILLAGER_TEMPLATE)
     parser.add_argument("--threshold", type=float, default=0.85)
@@ -154,6 +171,7 @@ def add_villager_args(parser):
     )
     parser.add_argument("--number-mask-ratio", type=float, default=0.40)
     parser.add_argument("--border-mask-ratio", type=float, default=0.04)
+    parser.add_argument("--queue-scale", type=float)
     parser.add_argument("--source-image")
     parser.add_argument("--output-dir", default="captures/queue")
     parser.add_argument("--debug-images", action="store_true")
@@ -161,6 +179,12 @@ def add_villager_args(parser):
 def add_research_args(parser):
     parser.add_argument("--config", default="config/calibration.2560x1440.json")
     parser.add_argument("--rect", type=parse_rect)
+    parser.add_argument("--monitor", type=int)
+    parser.add_argument(
+        "--template-resolution",
+        choices=sorted(RESOLUTION_MULTIPLIERS),
+        default="2560x1440",
+    )
     parser.add_argument("--catalog", default=DEFAULT_TECH_CATALOG)
     parser.add_argument("--template-root", default=DEFAULT_TECH_TEMPLATE_ROOT)
     parser.add_argument("--civilization", default="sis")
@@ -220,6 +244,12 @@ def build_parser():
         help="capture globalQueue and its research icon with Ctrl+Alt+S",
     )
     capture_queue.add_argument("--config", default="config/calibration.2560x1440.json")
+    capture_queue.add_argument("--monitor", type=int)
+    capture_queue.add_argument(
+        "--template-resolution",
+        choices=sorted(RESOLUTION_MULTIPLIERS),
+        default="2560x1440",
+    )
     capture_queue.add_argument("--rect", type=parse_rect)
     capture_queue.add_argument("--output-dir", default="captures/queue")
     capture_queue.add_argument(

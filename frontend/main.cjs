@@ -4,15 +4,26 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+
 const appRoot = path.resolve(__dirname, "..");
 const catalogPath = path.join(appRoot, "data", "technologies.json");
 const runtimeStatePath = path.join(appRoot, "runtime", "overlay-state.json");
 const runtimeControlsPath = path.join(appRoot, "runtime", "overlay-controls.json");
 const exampleStatePath = path.join(appRoot, "runtime", "overlay-state.example.json");
-const calibrationPath = path.join(appRoot, "config", "calibration.2560x1440.json");
+const debugEventsPath = path.join(appRoot, "captures", "debug-events");
+const resolutionProfilesPath = path.join(appRoot, "data", "resolution-profiles.json");
+const calibrationPaths = {
+  "1920x1080": path.join(appRoot, "config", "calibration.1920x1080.json"),
+  "2560x1440": path.join(appRoot, "config", "calibration.2560x1440.json"),
+  "3840x2160": path.join(appRoot, "config", "calibration.3840x2160.json"),
+};
 const villagerIconPath = path.join(appRoot, "templates", "queue", "villager.png");
+const villagerSoundDirectory = path.join(appRoot, "sound", "villager_mc");
 const railSize = { width: 720, height: 178 };
 const overlayLayout = "horizontal-two-row-calibrated-top";
+const resolutionProfiles = readJson(resolutionProfilesPath);
+const templateResolutions = new Set(Object.keys(resolutionProfiles));
 const startingAvailableTechnologies = ["wheelbarrow"];
 const startingLockedTechnologies = [
   "wood_1",
@@ -29,13 +40,25 @@ const startingLockedTechnologies = [
 
 let overlayWindow;
 let latestState;
-let flashingEnabled = true;
 let remindersPaused = false;
+let captureSettings = {
+  resolution: "2560x1440",
+  monitor: 1,
+  villagerSoundEnabled: true,
+};
 let calibrationProcess;
 let monitorProcess;
 let developerWindow;
+let quitCleanupStarted = false;
 const developerLogLines = [];
 const maxDeveloperLogLines = 500;
+const preferredWindowsPython = "C:\\Python313\\python.exe";
+
+function pythonCommand() {
+  if (process.platform !== "win32") return "python3";
+  return process.env.AOE4_PYTHON
+    || (fs.existsSync(preferredWindowsPython) ? preferredWindowsPython : "python.exe");
+}
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -58,6 +81,8 @@ function defaultState() {
       status: "starting",
       estimatedTimer: "00:00",
       timerMismatchCount: 0,
+      resetReady: false,
+      actionsPerMinute: 0,
     },
   };
 }
@@ -76,12 +101,6 @@ function writeOverlayControls(controls) {
   fs.renameSync(temporaryPath, runtimeControlsPath);
 }
 
-function writeRuntimeState(state) {
-  const temporaryPath = `${runtimeStatePath}.tmp`;
-  fs.writeFileSync(temporaryPath, JSON.stringify(state, null, 2));
-  fs.renameSync(temporaryPath, runtimeStatePath);
-}
-
 function appendDeveloperLog(source, message) {
   for (const line of String(message).split(/\r?\n/)) {
     if (!line) continue;
@@ -93,6 +112,25 @@ function appendDeveloperLog(source, message) {
     developerLogLines.push(entry);
     if (developerLogLines.length > maxDeveloperLogLines) developerLogLines.shift();
     developerWindow?.webContents.send("developer-console:log", entry);
+  }
+}
+
+function clearDebugEvents() {
+  try {
+    if (!fs.existsSync(debugEventsPath)) return 0;
+    const entries = fs.readdirSync(debugEventsPath, { withFileTypes: true });
+    for (const entry of entries) {
+      fs.rmSync(path.join(debugEventsPath, entry.name), {
+        force: true,
+        recursive: entry.isDirectory(),
+        maxRetries: 3,
+        retryDelay: 100,
+      });
+    }
+    return entries.length;
+  } catch (error) {
+    appendDeveloperLog("overlay", `debug event cleanup failed: ${error.message}`);
+    return null;
   }
 }
 
@@ -117,10 +155,23 @@ function readCatalog() {
   }));
 }
 
+function readVillagerAlertSounds() {
+  try {
+    return fs.readdirSync(villagerSoundDirectory)
+      .filter((fileName) => /\.(ogg|mp3)$/i.test(fileName))
+      .sort()
+      .map((fileName) => pathToFileURL(path.join(villagerSoundDirectory, fileName)).href);
+  } catch {
+    return [];
+  }
+}
+
 function savedPosition() {
   try {
     const position = readJson(path.join(app.getPath("userData"), "overlay-position.json"));
-    return position.layout === overlayLayout ? position : null;
+    return position.layout === overlayLayout && position.monitor === captureSettings.monitor
+      ? position
+      : null;
   } catch {
     return null;
   }
@@ -129,26 +180,60 @@ function savedPosition() {
 function readSettings() {
   try {
     const settings = readJson(path.join(app.getPath("userData"), "overlay-settings.json"));
-    return { flashingEnabled: settings.flashingEnabled !== false };
+    return {
+      resolution: templateResolutions.has(settings.resolution) ? settings.resolution : "2560x1440",
+      monitor: settings.monitor === 2 ? 2 : 1,
+      villagerSoundEnabled: settings.villagerSoundEnabled !== false,
+    };
   } catch {
-    return { flashingEnabled: true };
+    return { resolution: "2560x1440", monitor: 1, villagerSoundEnabled: true };
   }
 }
 
 function persistSettings() {
   fs.writeFileSync(
     path.join(app.getPath("userData"), "overlay-settings.json"),
-    JSON.stringify({ flashingEnabled }, null, 2),
+    JSON.stringify(captureSettings, null, 2),
   );
+}
+
+function resolutionMultiplier(resolution = captureSettings.resolution) {
+  return resolutionProfiles[resolution]?.multiplier || 1;
+}
+
+function scaleCalibrationPixels(value, resolution = captureSettings.resolution) {
+  return Math.round(value * resolutionMultiplier(resolution));
+}
+
+function calibrationPathForResolution(resolution = captureSettings.resolution) {
+  return calibrationPaths[resolution] || calibrationPaths["2560x1440"];
+}
+
+function scaledCalibrationRegion(calibration, regionName) {
+  if (Array.isArray(calibration.regions?.[regionName])) return calibration.regions[regionName];
+  if (!calibration.scaleFrom) return null;
+  const source = readJson(path.join(appRoot, "config", calibration.scaleFrom));
+  const values = source.regions?.[regionName];
+  if (!Array.isArray(values)) return null;
+  return values.map((value) => scaleCalibrationPixels(Number(value), calibration.resolution));
+}
+
+function selectedDisplay() {
+  return screen.getAllDisplays()[captureSettings.monitor - 1] || screen.getPrimaryDisplay();
 }
 
 function calibratedAgeTimerRegion() {
   try {
-    const values = readJson(calibrationPath).regions?.ageAndTimer;
+    const calibration = readJson(calibrationPathForResolution());
+    const values = scaledCalibrationRegion(calibration, "ageAndTimer");
     if (!Array.isArray(values) || values.length !== 4) return null;
     const [x, y, width, height] = values.map(Number);
     if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
       return null;
+    }
+    if (calibration.coordinateSpace === "monitor") {
+      const display = selectedDisplay().bounds;
+      return { x: x + display.x, y: y + display.y, width, height };
     }
     return { x, y, width, height };
   } catch {
@@ -157,14 +242,17 @@ function calibratedAgeTimerRegion() {
 }
 
 function defaultPosition(height = railSize.height) {
-  const workArea = screen.getPrimaryDisplay().workArea;
+  const workArea = selectedDisplay().workArea;
   const region = calibratedAgeTimerRegion();
   if (region) {
     const display = screen.getDisplayNearestPoint({ x: region.x, y: region.y }).workArea;
-    const desired = { x: region.x + region.width + 20, y: display.y };
+    const desired = { x: region.x + region.width + 20, y: display.y + 1 };
     return {
-      x: Math.max(display.x + 8, Math.min(desired.x, display.x + display.width - railSize.width - 8)),
-      y: display.y,
+      x: Math.max(
+        display.x + 8,
+        Math.min(desired.x, display.x + display.width - railSize.width - 8),
+      ),
+      y: desired.y,
     };
   }
   return {
@@ -178,7 +266,7 @@ function persistPosition() {
   const [x, y] = overlayWindow.getPosition();
   fs.writeFileSync(
     path.join(app.getPath("userData"), "overlay-position.json"),
-    JSON.stringify({ x, y, layout: overlayLayout }, null, 2),
+    JSON.stringify({ x, y, layout: overlayLayout, monitor: captureSettings.monitor }, null, 2),
   );
 }
 
@@ -209,17 +297,30 @@ function launchCalibration() {
     return Promise.resolve({ started: false, message: "Calibration is already running." });
   }
 
-  const python = process.platform === "win32" ? "python.exe" : "python3";
-  const child = spawn(python, ["scripts/aoe4_assistant.py", "calibrate"], {
+  const python = pythonCommand();
+  const child = spawn(
+    python,
+    [
+      "scripts/aoe4_assistant.py",
+      "calibrate",
+      "--monitor",
+      String(captureSettings.monitor),
+      "--output",
+      calibrationPathForResolution(),
+    ],
+    {
     cwd: appRoot,
     detached: true,
     stdio: "ignore",
     windowsHide: false,
-  });
+    },
+  );
   calibrationProcess = child;
 
   child.once("exit", () => {
     calibrationProcess = undefined;
+    restartMonitor();
+    overlayWindow?.showInactive();
   });
 
   return new Promise((resolve) => {
@@ -264,14 +365,27 @@ function openDeveloperConsole() {
 function launchMonitor() {
   if (monitorProcess) return;
 
-  const python = process.platform === "win32" ? "python.exe" : "python3";
-  const child = spawn(python, ["scripts/aoe4_assistant.py", "watch-monitor"], {
+  const python = pythonCommand();
+  const child = spawn(python, [
+    "scripts/aoe4_assistant.py",
+    "watch-monitor",
+    "--monitor",
+    String(captureSettings.monitor),
+    "--template-resolution",
+    captureSettings.resolution,
+    "--config",
+    calibrationPathForResolution(),
+    "--debug-events",
+  ], {
     cwd: appRoot,
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });
   monitorProcess = child;
-  appendDeveloperLog("monitor", "starting");
+  appendDeveloperLog(
+    "monitor",
+    `starting (monitor=${captureSettings.monitor}, resolution=${captureSettings.resolution})`,
+  );
 
   child.stdout.on("data", (data) => {
     process.stdout.write(`[monitor] ${data}`);
@@ -288,6 +402,17 @@ function launchMonitor() {
     monitorProcess = undefined;
     appendDeveloperLog("monitor", `stopped (code=${code}, signal=${signal})`);
   });
+}
+
+function restartMonitor() {
+  if (!monitorProcess) {
+    launchMonitor();
+    return;
+  }
+  const child = monitorProcess;
+  appendDeveloperLog("monitor", "restarting for updated capture settings");
+  child.once("exit", () => launchMonitor());
+  child.kill();
 }
 
 function createWindow() {
@@ -317,23 +442,52 @@ function createWindow() {
 
 app.whenReady().then(() => {
   latestState = readState();
-  flashingEnabled = readSettings().flashingEnabled;
+  captureSettings = readSettings();
   remindersPaused = readOverlayControls().paused === true;
   latestState = { ...latestState, remindersPaused };
   ipcMain.handle("overlay:bootstrap", () => ({
     state: latestState,
     technologies: readCatalog(),
     villagerIconUrl: pathToFileURL(villagerIconPath).href,
-    flashingEnabled,
+    villagerAlertSounds: readVillagerAlertSounds(),
+    captureSettings,
     remindersPaused,
   }));
   ipcMain.handle("overlay:hide", () => overlayWindow?.hide());
   ipcMain.handle("overlay:close", () => app.quit());
-  ipcMain.handle("overlay:set-flashing", (_event, enabled) => {
-    flashingEnabled = Boolean(enabled);
+  ipcMain.handle("overlay:set-capture-settings", (_event, settings) => {
+    const previousMonitor = captureSettings.monitor;
+    captureSettings = {
+      resolution: templateResolutions.has(settings?.resolution)
+        ? settings.resolution
+        : captureSettings.resolution,
+      monitor: settings?.monitor === 2 ? 2 : 1,
+      villagerSoundEnabled: captureSettings.villagerSoundEnabled,
+    };
     persistSettings();
-    overlayWindow?.webContents.send("overlay:flashing", flashingEnabled);
-    return flashingEnabled;
+    appendDeveloperLog(
+      "overlay",
+      `capture settings monitor=${captureSettings.monitor} resolution=${captureSettings.resolution}`,
+    );
+    if (captureSettings.monitor !== previousMonitor && overlayWindow) {
+      const position = defaultPosition();
+      overlayWindow.setPosition(position.x, position.y);
+      persistPosition();
+    }
+    restartMonitor();
+    return captureSettings;
+  });
+  ipcMain.handle("overlay:set-villager-sound-enabled", (_event, enabled) => {
+    captureSettings = {
+      ...captureSettings,
+      villagerSoundEnabled: Boolean(enabled),
+    };
+    persistSettings();
+    appendDeveloperLog(
+      "overlay",
+      `villager alert sound ${captureSettings.villagerSoundEnabled ? "enabled" : "disabled"}`,
+    );
+    return captureSettings.villagerSoundEnabled;
   });
   ipcMain.handle("overlay:set-reminders-paused", (_event, paused) => {
     remindersPaused = Boolean(paused);
@@ -342,21 +496,23 @@ app.whenReady().then(() => {
       paused: remindersPaused,
     });
     latestState = { ...latestState, remindersPaused };
-    writeRuntimeState(latestState);
     appendDeveloperLog("overlay", `reminders ${remindersPaused ? "paused" : "resumed"}`);
     overlayWindow?.webContents.send("overlay:state", latestState);
     overlayWindow?.webContents.send("overlay:paused", remindersPaused);
     return remindersPaused;
   });
   ipcMain.handle("overlay:reset-reminders", () => {
-    remindersPaused = false;
+    const clearedDebugEvents = clearDebugEvents();
+    remindersPaused = true;
     writeOverlayControls({
-      paused: false,
+      paused: true,
       resetToken: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     });
-    latestState = defaultState();
-    writeRuntimeState(latestState);
-    appendDeveloperLog("overlay", "reminder session reset requested");
+    latestState = { ...defaultState(), remindersPaused };
+    appendDeveloperLog(
+      "overlay",
+      `reminder session reset requested and paused; debug events cleared=${clearedDebugEvents ?? "failed"}`,
+    );
     overlayWindow?.webContents.send("overlay:state", latestState);
     overlayWindow?.webContents.send("overlay:paused", remindersPaused);
     return remindersPaused;
@@ -378,8 +534,28 @@ app.whenReady().then(() => {
   globalShortcut.register("CommandOrControl+Alt+O", toggleOverlayVisibility);
 });
 
-app.on("will-quit", () => {
-  fs.unwatchFile(runtimeStatePath);
-  globalShortcut.unregisterAll();
-  monitorProcess?.kill();
+app.on("before-quit", (event) => {
+  if (quitCleanupStarted) return;
+  event.preventDefault();
+  quitCleanupStarted = true;
+  let quitFinished = false;
+
+  const finishQuit = () => {
+    if (quitFinished) return;
+    quitFinished = true;
+    fs.unwatchFile(runtimeStatePath);
+    globalShortcut.unregisterAll();
+    clearDebugEvents();
+    app.quit();
+  };
+
+  if (!monitorProcess) {
+    finishQuit();
+    return;
+  }
+
+  const child = monitorProcess;
+  child.once("exit", finishQuit);
+  child.kill();
+  setTimeout(finishQuit, 800);
 });

@@ -1,0 +1,7 @@
+{
+  "resolution": "1920x1080",
+  "uiScale": "100%",
+  "monitor": 1,
+  "coordinateSpace": "monitor",
+  "scaleFrom": "calibration.2560x1440.json"
+}

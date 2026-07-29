@@ -4,16 +4,27 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
+from .age import load_monitor
 from .common import (
     grab_region_bgr,
     load_json,
     load_region,
+    resolution_multiplier,
     run_windows_hotkey_session,
+    scale_pixels,
+    scale_rect,
 )
 
 
 RESEARCH_READER = "tech-template-catalog"
+RESEARCH_MATCH_METHOD = "TM_CCOEFF_NORMED"
+RESEARCH_THRESHOLDS = {
+    "1920x1080": 0.80,
+    "2560x1440": 0.80,
+    "3840x2160": 0.80,
+}
 DEFAULT_TECH_CATALOG = "data/technologies.json"
 DEFAULT_TECH_TEMPLATE_ROOT = "templates/tech"
 RESEARCH_CAPTURE_RECTS = {
@@ -22,14 +33,18 @@ RESEARCH_CAPTURE_RECTS = {
 }
 
 
-def extract_research_capture(source_path, output_path, row):
+def default_research_threshold(template_resolution):
+    return RESEARCH_THRESHOLDS.get(template_resolution, RESEARCH_THRESHOLDS["2560x1440"])
+
+
+def extract_research_capture(source_path, output_path, row, multiplier=1.0):
     import cv2
 
     frame = cv2.imread(str(source_path), cv2.IMREAD_COLOR)
     if frame is None:
         raise RuntimeError(f"could not read queue capture: {source_path}")
 
-    x, y, width, height = RESEARCH_CAPTURE_RECTS[row]
+    x, y, width, height = scale_rect(RESEARCH_CAPTURE_RECTS[row], multiplier)
     if x + width > frame.shape[1] or y + height > frame.shape[0]:
         raise RuntimeError(
             f"queue capture is too small for the {row} research slot: {source_path}"
@@ -105,6 +120,17 @@ def parse_categories(value):
         raise argparse.ArgumentTypeError("at least one category is required")
     return categories
 
+
+def reader_args(args):
+    multiplier = resolution_multiplier(getattr(args, "template_resolution", "2560x1440"))
+    return SimpleNamespace(
+        threshold=args.threshold,
+        scales=[scale * multiplier for scale in args.scales],
+        border_mask_ratio=args.border_mask_ratio,
+        min_distance=scale_pixels(args.min_distance, multiplier, 1),
+        max_detections=args.max_detections,
+    )
+
 def research_template_mask(template, border_mask_ratio):
     import cv2
     import numpy as np
@@ -128,6 +154,9 @@ def research_template_mask(template, border_mask_ratio):
         mask[height - border_y :, :] = 0
     # Queue progress pips vary by research state and are not part of the icon.
     mask[: round(height * 0.28), round(width * 0.58) :] = 0
+    # The bottom queue-status strip also changes as progress advances. It is
+    # outside the artwork and made the older range-attack capture score low.
+    mask[round(height * 0.94) :, :] = 0
     return cv2.merge([mask, mask, mask])
 
 
@@ -205,7 +234,10 @@ def match_research_technologies(frame, technologies, args):
                 result = cv2.matchTemplate(
                     frame,
                     scaled_template,
-                    cv2.TM_CCORR_NORMED,
+                    # Correlation without mean subtraction lets similarly bright
+                    # green terrain score as a match. Coefficient correlation keeps
+                    # the icon artwork's shape and contrast as the deciding signal.
+                    cv2.TM_CCOEFF_NORMED,
                     mask=mask,
                 )
                 result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
@@ -245,6 +277,7 @@ def match_research_technologies(frame, technologies, args):
         ],
         "candidateCount": len(candidates),
         "loadedTemplateCount": loaded_template_count,
+        "matchMethod": RESEARCH_MATCH_METHOD,
         "threshold": args.threshold,
     }
 
@@ -283,7 +316,8 @@ def read_research_frame(args):
             raise RuntimeError(f"could not read source image: {args.source_image}")
         return crop_research_queue(frame)
 
-    rect = args.rect or load_region(Path(args.config), "globalQueue")
+    monitor = load_monitor(args.monitor) if args.monitor is not None else None
+    rect = args.rect or load_region(Path(args.config), "globalQueue", monitor)
     return crop_research_queue(grab_region_bgr(rect))
 
 def research_payload(result, elapsed_ms, missing_templates, state_changed=None):
@@ -294,6 +328,7 @@ def research_payload(result, elapsed_ms, missing_templates, state_changed=None):
         "detectedKeys": [detection["key"] for detection in result["researching"]],
         "candidateCount": result["candidateCount"],
         "loadedTemplateCount": result["loadedTemplateCount"],
+        "matchMethod": result["matchMethod"],
         "threshold": result["threshold"],
         "elapsedMs": round(elapsed_ms, 2),
     }
@@ -319,7 +354,7 @@ def command_match_research(args):
 
     started = time.perf_counter()
     frame = read_research_frame(args)
-    result = match_research_technologies(frame, technologies, args)
+    result = match_research_technologies(frame, technologies, reader_args(args))
     elapsed_ms = (time.perf_counter() - started) * 1000
 
     if args.debug_images:
@@ -352,7 +387,8 @@ def command_watch_research(args):
     if args.source_image:
         print(f"Reading research queue from image {args.source_image}.", file=sys.stderr)
     else:
-        rect = args.rect or load_region(Path(args.config), "globalQueue")
+        monitor = load_monitor(args.monitor) if args.monitor is not None else None
+        rect = args.rect or load_region(Path(args.config), "globalQueue", monitor)
         print(
             f"Watching both rows of globalQueue region {rect}. Press Ctrl+C to stop.",
             file=sys.stderr,
@@ -366,7 +402,7 @@ def command_watch_research(args):
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
             started = time.perf_counter()
             frame = read_research_frame(args)
-            result = match_research_technologies(frame, technologies, args)
+            result = match_research_technologies(frame, technologies, reader_args(args))
             elapsed_ms = (time.perf_counter() - started) * 1000
             detected_keys = tuple(detection["key"] for detection in result["researching"])
             state_changed = previous_keys is not None and previous_keys != detected_keys
@@ -405,7 +441,8 @@ def command_test_research_queue(args):
     if not args.show_missing_templates:
         missing_templates = []
 
-    rect = args.rect or load_region(Path(args.config), "globalQueue")
+    monitor = load_monitor(args.monitor) if args.monitor is not None else None
+    rect = args.rect or load_region(Path(args.config), "globalQueue", monitor)
 
     print(
         f"Research queue test ready for globalQueue region {rect}. Press Ctrl+Alt+S "
@@ -422,7 +459,7 @@ def command_test_research_queue(args):
         cv2.imwrite(str(source_path), frame)
 
         started = time.perf_counter()
-        result = match_research_technologies(frame, technologies, args)
+        result = match_research_technologies(frame, technologies, reader_args(args))
         elapsed_ms = (time.perf_counter() - started) * 1000
         save_research_debug_image(frame, result, debug_path)
 

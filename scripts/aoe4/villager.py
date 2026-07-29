@@ -3,8 +3,10 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
-from .common import grab_region_bgr, load_json, load_region
+from .age import load_monitor
+from .common import grab_region_bgr, load_json, load_region, resolution_multiplier
 
 
 VILLAGER_READER = "masked-template"
@@ -15,6 +17,28 @@ PRODUCTION_QUEUE_SLOT_PITCH = 58
 PRODUCTION_QUEUE_MIN_BLUE_COVERAGE = 0.15
 PRODUCTION_QUEUE_MIN_PORTRAIT_COVERAGE = 0.05
 PRODUCTION_QUEUE_MIN_HEAD_COVERAGE = 0.05
+
+
+def queue_geometry(scale):
+    if scale <= 0:
+        raise RuntimeError("queue scale must be greater than zero")
+    return (
+        max(1, round(PRODUCTION_QUEUE_TILE_SIZE * scale)),
+        max(0, round(PRODUCTION_QUEUE_LEFT_OFFSET * scale)),
+        max(1, round(PRODUCTION_QUEUE_SLOT_PITCH * scale)),
+    )
+
+
+def reader_args(args):
+    multiplier = resolution_multiplier(getattr(args, "template_resolution", "2560x1440"))
+    queue_scale = args.queue_scale if getattr(args, "queue_scale", None) else multiplier
+    return SimpleNamespace(
+        threshold=args.threshold,
+        scales=[scale * multiplier for scale in args.scales],
+        queue_scale=queue_scale,
+        number_mask_ratio=args.number_mask_ratio,
+        border_mask_ratio=args.border_mask_ratio,
+    )
 
 
 def villager_template_mask(template, number_mask_ratio, border_mask_ratio):
@@ -39,7 +63,7 @@ def villager_template_mask(template, number_mask_ratio, border_mask_ratio):
 
     return cv2.merge([mask, mask, mask])
 
-def find_economy_queue_tiles(frame):
+def find_economy_queue_tiles(frame, queue_scale=1.0):
     import cv2
     import numpy as np
 
@@ -55,16 +79,17 @@ def find_economy_queue_tiles(frame):
         np.array((24, 255, 255)),
     )
     tiles = []
-    tile_size = min(PRODUCTION_QUEUE_TILE_SIZE, frame.shape[0], frame.shape[1])
+    expected_tile_size, left_offset, slot_pitch = queue_geometry(queue_scale)
+    tile_size = min(expected_tile_size, frame.shape[0], frame.shape[1])
     row_y = frame.shape[0] - tile_size
-    if tile_size < PRODUCTION_QUEUE_TILE_SIZE:
+    if tile_size < expected_tile_size:
         return tiles
 
     tile_area = tile_size * tile_size
     for x in range(
-        PRODUCTION_QUEUE_LEFT_OFFSET,
+        left_offset,
         frame.shape[1] - tile_size + 1,
-        PRODUCTION_QUEUE_SLOT_PITCH,
+        slot_pitch,
     ):
         blue_coverage = (
             cv2.countNonZero(blue_mask[row_y : row_y + tile_size, x : x + tile_size])
@@ -103,9 +128,10 @@ def find_economy_queue_tiles(frame):
 
     return tiles
 
-def crop_production_queue(frame):
+def crop_production_queue(frame, queue_scale=1.0):
     # Debug captures already contain the lower production half.
-    if frame.shape[0] <= PRODUCTION_QUEUE_TILE_SIZE * 1.25:
+    expected_tile_size, _left_offset, _slot_pitch = queue_geometry(queue_scale)
+    if frame.shape[0] <= expected_tile_size * 1.25:
         return frame
     return frame[frame.shape[0] // 2 :, :]
 
@@ -117,7 +143,10 @@ def match_villager_icon(frame, template_path, args):
     if template is None:
         raise RuntimeError(f"could not read villager template: {template_path}")
 
-    queue_tiles = find_economy_queue_tiles(frame)
+    queue_tiles = find_economy_queue_tiles(
+        frame,
+        getattr(args, "queue_scale", 1.0),
+    )
     best = None
 
     for tile in queue_tiles:
@@ -182,13 +211,13 @@ def match_villager_icon(frame, template_path, args):
     best["threshold"] = args.threshold
     return best
 
-def save_villager_debug_image(frame, result, output_path):
+def save_villager_debug_image(frame, result, output_path, y_offset=0):
     import cv2
 
     debug = frame.copy()
     for tile in result.get("queueTiles", []):
         x = tile["x"]
-        y = tile["y"]
+        y = tile["y"] + y_offset
         width = tile["width"]
         height = tile["height"]
         cv2.rectangle(debug, (x, y), (x + width, y + height), (255, 255, 0), 1)
@@ -197,7 +226,7 @@ def save_villager_debug_image(frame, result, output_path):
     color = (0, 255, 0) if result["villagerQueued"] else (0, 0, 255)
     if match:
         x = match["x"]
-        y = match["y"]
+        y = match["y"] + y_offset
         width = match["width"]
         height = match["height"]
         cv2.rectangle(debug, (x, y), (x + width, y + height), color, 2)
@@ -215,17 +244,30 @@ def save_villager_debug_image(frame, result, output_path):
     output_path.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(output_path), debug)
 
-def read_queue_frame(args):
+def read_global_queue_frame(args):
     import cv2
 
     if args.source_image:
         frame = cv2.imread(str(Path(args.source_image)), cv2.IMREAD_COLOR)
         if frame is None:
             raise RuntimeError(f"could not read source image: {args.source_image}")
-        return crop_production_queue(frame)
+        return frame
 
-    rect = args.rect or load_region(Path(args.config), "globalQueue")
-    return crop_production_queue(grab_region_bgr(rect))
+    rect = queue_rect(args)
+    return grab_region_bgr(rect)
+
+
+def read_queue_frame(args):
+    return crop_production_queue(
+        read_global_queue_frame(args),
+        reader_args(args).queue_scale,
+    )
+
+
+def queue_rect(args):
+    monitor_index = getattr(args, "monitor", None)
+    monitor = load_monitor(monitor_index) if monitor_index is not None else None
+    return args.rect or load_region(Path(args.config), "globalQueue", monitor)
 
 def villager_payload(result, elapsed_ms, state_changed=None):
     payload = {
@@ -252,7 +294,7 @@ def command_match_villager(args):
 
     started = time.perf_counter()
     frame = read_queue_frame(args)
-    result = match_villager_icon(frame, Path(args.template), args)
+    result = match_villager_icon(frame, Path(args.template), reader_args(args))
     elapsed_ms = (time.perf_counter() - started) * 1000
 
     if args.debug_images:
@@ -276,7 +318,7 @@ def command_watch_villager(args):
     if args.source_image:
         print(f"Reading queue from image {args.source_image}.", file=sys.stderr)
     else:
-        rect = args.rect or load_region(Path(args.config), "globalQueue")
+        rect = queue_rect(args)
         print(
             f"Watching globalQueue region {rect}. Press Ctrl+C to stop.",
             file=sys.stderr,
@@ -286,8 +328,10 @@ def command_watch_villager(args):
         while True:
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
             started = time.perf_counter()
-            frame = read_queue_frame(args)
-            result = match_villager_icon(frame, Path(args.template), args)
+            global_queue_frame = read_global_queue_frame(args)
+            match_args = reader_args(args)
+            frame = crop_production_queue(global_queue_frame, match_args.queue_scale)
+            result = match_villager_icon(frame, Path(args.template), match_args)
             elapsed_ms = (time.perf_counter() - started) * 1000
             state_changed = (
                 previous_queued is not None
@@ -296,10 +340,15 @@ def command_watch_villager(args):
             previous_queued = result["villagerQueued"]
 
             if args.debug_images:
-                raw_path = output_dir / f"queue-{timestamp}.png"
+                raw_path = output_dir / f"globalQueue-{timestamp}.png"
                 debug_path = output_dir / f"queue-{timestamp}-villager.png"
-                cv2.imwrite(str(raw_path), frame)
-                save_villager_debug_image(frame, result, debug_path)
+                cv2.imwrite(str(raw_path), global_queue_frame)
+                save_villager_debug_image(
+                    global_queue_frame,
+                    result,
+                    debug_path,
+                    global_queue_frame.shape[0] - frame.shape[0],
+                )
 
             print(
                 json.dumps(villager_payload(result, elapsed_ms, state_changed)),
@@ -334,7 +383,12 @@ def command_test_villagers(args):
             failures.append(failure)
             continue
 
-        result = match_villager_icon(crop_production_queue(frame), template_path, args)
+        match_args = reader_args(args)
+        result = match_villager_icon(
+            crop_production_queue(frame, match_args.queue_scale),
+            template_path,
+            match_args,
+        )
         actual_queued = result["villagerQueued"]
         passed = actual_queued == expected_queued
         results[image_name] = {

@@ -1,16 +1,46 @@
 import argparse
 import json
+import math
 import sys
 import time
 from pathlib import Path
 
 
 REGIONS = ("resources", "ageAndTimer", "globalQueue")
+RESOLUTION_PROFILES_PATH = Path(__file__).resolve().parents[2] / "data" / "resolution-profiles.json"
+RESOLUTION_MULTIPLIERS = {
+    resolution: float(profile["multiplier"])
+    for resolution, profile in json.loads(
+        RESOLUTION_PROFILES_PATH.read_text(encoding="utf-8")
+    ).items()
+}
 COLORS = {
     "resources": "#37d67a",
     "ageAndTimer": "#3aa0ff",
     "globalQueue": "#ffb020",
 }
+
+
+def resolution_multiplier(resolution):
+    try:
+        return RESOLUTION_MULTIPLIERS[resolution]
+    except KeyError as exc:
+        raise RuntimeError(f"unsupported resolution profile: {resolution}") from exc
+
+
+def scale_pixels(value, multiplier, minimum=None):
+    scaled = math.floor(value * multiplier + 0.5)
+    return max(minimum, scaled) if minimum is not None else scaled
+
+
+def scale_rect(rect, multiplier):
+    x, y, width, height = rect
+    return (
+        scale_pixels(x, multiplier),
+        scale_pixels(y, multiplier),
+        scale_pixels(width, multiplier, 1),
+        scale_pixels(height, multiplier, 1),
+    )
 
 
 def parse_rect(value):
@@ -35,14 +65,29 @@ def load_json(path):
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
 
-def load_region(config_path, region_name):
+def config_region(config_path, config, region_name):
+    values = config.get("regions", {}).get(region_name)
+    if values:
+        return values
+
+    source_name = config.get("scaleFrom")
+    if not source_name:
+        return None
+    source_path = config_path.parent / source_name
+    source_config = load_json(source_path) or {}
+    source_values = source_config.get("regions", {}).get(region_name)
+    if not source_values:
+        return None
+    return scale_rect(source_values, resolution_multiplier(config["resolution"]))
+
+
+def load_region(config_path, region_name, monitor=None):
     with config_path.open("r", encoding="utf-8") as handle:
         config = json.load(handle)
 
-    try:
-        values = config["regions"][region_name]
-    except KeyError as exc:
-        raise RuntimeError(f"region '{region_name}' not found in {config_path}") from exc
+    values = config_region(config_path, config, region_name)
+    if values is None:
+        raise RuntimeError(f"region '{region_name}' not found in {config_path}")
 
     if len(values) != 4:
         raise RuntimeError(f"region '{region_name}' must be [x, y, width, height]")
@@ -50,6 +95,10 @@ def load_region(config_path, region_name):
     rect = tuple(int(value) for value in values)
     if rect[2] <= 0 or rect[3] <= 0:
         raise RuntimeError(f"region '{region_name}' has invalid width/height: {values}")
+
+    if config.get("coordinateSpace") == "monitor" and monitor:
+        x, y, width, height = rect
+        return (x + monitor["left"], y + monitor["top"], width, height)
 
     return rect
 
@@ -67,10 +116,15 @@ def resolve_rect(args):
     return load_region(config_path, args.region)
 
 def default_regions(width, height):
+    multiplier = width / 2560
+    canonical = {
+        "resources": [0, 1116, 256, 295],
+        "ageAndTimer": [1174, 48, 207, 195],
+        "globalQueue": [5, 909, 520, 116],
+    }
     return {
-        "resources": [0, 0, min(700, width), 90],
-        "ageAndTimer": [max(0, (width // 2) - 160), 0, 320, 120],
-        "globalQueue": [max(0, (width // 2) - 520), max(0, height - 250), 1040, 190],
+        region: clamp_rect(scale_rect(rect, multiplier), width, height)
+        for region, rect in canonical.items()
     }
 
 def rect_from_config(config, region, monitor):
@@ -79,6 +133,8 @@ def rect_from_config(config, region, monitor):
         return None
 
     x, y, width, height = (int(value) for value in values)
+    if config.get("coordinateSpace") == "monitor":
+        return [x, y, width, height]
     return [x - monitor["left"], y - monitor["top"], width, height]
 
 def clamp_rect(rect, width, height):

@@ -8,10 +8,16 @@ const ageTiers = {
 let state;
 let technologies = [];
 let villagerIconUrl = "";
-let flashingEnabled = true;
+let villagerAlertSounds = [];
+let villagerSoundQueue = [];
+let activeVillagerSound;
+let villagerSoundEnabled = true;
 let remindersPaused = false;
 let settingsOpen = false;
 let timerAnchor;
+let captureSettings = { resolution: "2560x1440", monitor: 1 };
+let monitorReady = false;
+let resetPending = false;
 
 function ageTier(age) {
   const match = /^age_([1-4])$/.exec(age || "");
@@ -57,6 +63,69 @@ function timerLabel() {
   return formatTimer(timerAnchor.seconds + elapsed);
 }
 
+function apmLabel() {
+  const apm = Number(state.session?.actionsPerMinute);
+  return Number.isFinite(apm) ? String(Math.max(0, Math.round(apm))) : "--";
+}
+
+function reminderControlsReady(paused) {
+  return paused || (monitorReady && !resetPending && state.session?.status !== "starting");
+}
+
+function shuffleSounds(sounds) {
+  const shuffled = [...sounds];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return shuffled;
+}
+
+function shouldPlayVillagerAlertSound() {
+  return (
+    villagerSoundEnabled
+    && Boolean(state?.villagerReminder)
+    && !state?.remindersPaused
+  );
+}
+
+function stopVillagerAlertSound() {
+  villagerSoundQueue = [];
+  if (!activeVillagerSound) return;
+  activeVillagerSound.onended = null;
+  activeVillagerSound.onerror = null;
+  activeVillagerSound.pause();
+  activeVillagerSound.currentTime = 0;
+  activeVillagerSound = undefined;
+}
+
+function playNextVillagerAlertSound() {
+  if (!shouldPlayVillagerAlertSound() || activeVillagerSound || !villagerAlertSounds.length) {
+    return;
+  }
+  if (!villagerSoundQueue.length) {
+    villagerSoundQueue = shuffleSounds(villagerAlertSounds);
+  }
+  const sound = new Audio(villagerSoundQueue.pop());
+  activeVillagerSound = sound;
+  const continuePlaylist = () => {
+    if (activeVillagerSound !== sound) return;
+    activeVillagerSound = undefined;
+    playNextVillagerAlertSound();
+  };
+  sound.onended = continuePlaylist;
+  sound.onerror = continuePlaylist;
+  sound.play().catch(continuePlaylist);
+}
+
+function syncVillagerAlertSound() {
+  if (!shouldPlayVillagerAlertSound()) {
+    stopVillagerAlertSound();
+    return;
+  }
+  playNextVillagerAlertSound();
+}
+
 function techIsAvailable(technology) {
   if (state.availableTechnologies !== undefined) {
     return state.availableTechnologies.includes(technology.key);
@@ -99,10 +168,11 @@ function render() {
   );
   const villagerIdle = state.villagerReminder ?? state.villagerProductionActive === false;
   const paused = state.remindersPaused ?? remindersPaused;
+  const controlsReady = reminderControlsReady(paused);
   overlay.className = [
     "overlay",
     !paused && villagerIdle ? "overlay--urgent" : "overlay--quiet",
-    !paused && villagerIdle && flashingEnabled ? "overlay--flashing" : "",
+    !paused && villagerIdle ? "overlay--flashing" : "",
     paused ? "overlay--paused" : "",
     "overlay--visible",
   ].filter(Boolean).join(" ");
@@ -117,9 +187,20 @@ function render() {
       </div>
       ${settingsOpen ? `
         <div class="settings-panel">
-          <label class="settings-toggle">
-            <span>Flash alerts</span>
-            <input id="flash-toggle" type="checkbox" ${flashingEnabled ? "checked" : ""}>
+          <label class="settings-select">
+            <span>Resolution</span>
+            <select id="resolution-select">
+              <option value="1920x1080" ${captureSettings.resolution === "1920x1080" ? "selected" : ""}>1920 x 1080</option>
+              <option value="2560x1440" ${captureSettings.resolution === "2560x1440" ? "selected" : ""}>2560 x 1440</option>
+              <option value="3840x2160" ${captureSettings.resolution === "3840x2160" ? "selected" : ""}>3840 x 2160</option>
+            </select>
+          </label>
+          <label class="settings-select">
+            <span>Monitor</span>
+            <select id="monitor-select">
+              <option value="1" ${captureSettings.monitor === 1 ? "selected" : ""}>Monitor 1</option>
+              <option value="2" ${captureSettings.monitor === 2 ? "selected" : ""}>Monitor 2</option>
+            </select>
           </label>
           <button class="settings-action" id="reset-position-button" type="button">Reset position</button>
           <button class="settings-action" id="developer-console-button" type="button">Developer console</button>
@@ -132,12 +213,19 @@ function render() {
             <time class="game-timer" title="Game timer">${timerLabel()}</time>
             <div class="age-marker" title="Current age"><span>Age</span><strong>${ageLabel(state.age)}</strong></div>
           </div>
+          <div class="apm-tracker" title="Actions per minute"><span>APM</span><strong>${apmLabel()}</strong></div>
           <div class="reminder-actions">
-            <button class="reminder-action" id="pause-reminders-button" type="button" title="${paused ? "Resume reminders" : "Pause reminders"}" aria-label="${paused ? "Resume reminders" : "Pause reminders"}" aria-pressed="${paused}">${paused ? "&#9654;" : "&#10074;&#10074;"}</button>
-            <button class="reminder-action" id="reset-reminders-button" type="button" title="Reset reminder session" aria-label="Reset reminder session">&#8635;</button>
+            <button class="reminder-action" id="pause-reminders-button" type="button" title="${paused ? "Resume reminders" : "Pause reminders"}" aria-label="${paused ? "Resume reminders" : "Pause reminders"}" aria-pressed="${paused}" ${controlsReady ? "" : "disabled"}>${paused ? "&#9654;" : "&#10074;&#10074;"}</button>
+            <button class="reminder-action" id="reset-reminders-button" type="button" title="Reset reminder session" aria-label="Reset reminder session" ${controlsReady ? "" : "disabled"}>&#8635;</button>
           </div>
-          <div class="villager-alert ${villagerIdle ? "villager-alert--idle" : "villager-alert--active"}" title="${villagerIdle ? "Villager production is idle" : "Villager production is active"}">
-            <img src="${villagerIconUrl}" alt="" />
+          <div class="villager-reminder">
+            <div class="villager-alert ${villagerIdle ? "villager-alert--idle" : "villager-alert--active"}" title="${villagerIdle ? "Villager production is idle" : "Villager production is active"}">
+              <img src="${villagerIconUrl}" alt="" />
+            </div>
+            <label class="villager-sound-toggle" title="Enable villager reminder sound">
+              <input id="villager-sound-toggle" type="checkbox" ${villagerSoundEnabled ? "checked" : ""} />
+              <span>Sound</span>
+            </label>
           </div>
         </aside>
         <div class="technology-sections">
@@ -165,22 +253,42 @@ function render() {
   document.getElementById("hide-button").addEventListener("click", () => window.aoeOverlay.hide());
   document.getElementById("close-button").addEventListener("click", () => window.aoeOverlay.close());
   document.getElementById("pause-reminders-button").addEventListener("click", async () => {
+    if (!reminderControlsReady(paused)) return;
     remindersPaused = await window.aoeOverlay.setRemindersPaused(!paused);
     state = { ...state, remindersPaused };
     console.info(`[overlay] reminders ${remindersPaused ? "paused" : "resumed"}`);
     render();
   });
   document.getElementById("reset-reminders-button").addEventListener("click", async (event) => {
+    if (!reminderControlsReady(paused)) return;
     event.currentTarget.disabled = true;
+    resetPending = true;
     remindersPaused = await window.aoeOverlay.resetReminders();
     state = { ...state, remindersPaused };
     syncTimerAnchor(state);
     console.info("[overlay] reminder session reset requested");
     render();
   });
+  document.getElementById("villager-sound-toggle").addEventListener("change", async (event) => {
+    villagerSoundEnabled = await window.aoeOverlay.setVillagerSoundEnabled(
+      event.currentTarget.checked,
+    );
+    render();
+  });
   if (settingsOpen) {
-    document.getElementById("flash-toggle").addEventListener("change", (event) => {
-      window.aoeOverlay.setFlashing(event.currentTarget.checked);
+    document.getElementById("resolution-select").addEventListener("change", async (event) => {
+      captureSettings = await window.aoeOverlay.setCaptureSettings({
+        resolution: event.currentTarget.value,
+        monitor: captureSettings.monitor,
+      });
+      render();
+    });
+    document.getElementById("monitor-select").addEventListener("change", async (event) => {
+      captureSettings = await window.aoeOverlay.setCaptureSettings({
+        resolution: captureSettings.resolution,
+        monitor: Number(event.currentTarget.value),
+      });
+      render();
     });
     document.getElementById("reset-position-button").addEventListener("click", () => {
       window.aoeOverlay.resetPosition();
@@ -198,6 +306,7 @@ function render() {
     const rail = overlay.querySelector(".rail");
     window.aoeOverlay.resize(rail.scrollHeight + 16);
   });
+  syncVillagerAlertSound();
 }
 
 async function start() {
@@ -206,7 +315,9 @@ async function start() {
   syncTimerAnchor(state);
   technologies = bootstrap.technologies;
   villagerIconUrl = bootstrap.villagerIconUrl;
-  flashingEnabled = bootstrap.flashingEnabled;
+  villagerAlertSounds = bootstrap.villagerAlertSounds || [];
+  captureSettings = bootstrap.captureSettings;
+  villagerSoundEnabled = captureSettings.villagerSoundEnabled !== false;
   remindersPaused = bootstrap.remindersPaused;
   render();
 
@@ -214,10 +325,13 @@ async function start() {
     state = nextState;
     syncTimerAnchor(state);
     remindersPaused = nextState.remindersPaused ?? remindersPaused;
-    render();
-  });
-  window.aoeOverlay.onFlashing((enabled) => {
-    flashingEnabled = enabled;
+    if (
+      nextState.session?.status === "tracking"
+      || (resetPending && nextState.session?.resetReady)
+    ) {
+      monitorReady = true;
+      resetPending = false;
+    }
     render();
   });
   window.aoeOverlay.onPaused((paused) => {
@@ -233,3 +347,5 @@ setInterval(() => {
 }, 250);
 
 start();
+
+window.addEventListener("beforeunload", stopVillagerAlertSound);

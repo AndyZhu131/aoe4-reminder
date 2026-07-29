@@ -1,4 +1,7 @@
 import json
+import os
+import time
+import uuid
 from pathlib import Path
 
 
@@ -47,9 +50,21 @@ def write_overlay_state(
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = output_path.with_suffix(f"{output_path.suffix}.tmp")
-    temporary_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
-    temporary_path.replace(output_path)
+    temporary_path = output_path.with_name(
+        f".{output_path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+    )
+    try:
+        temporary_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+        for attempt in range(4):
+            try:
+                os.replace(temporary_path, output_path)
+                break
+            except PermissionError:
+                if attempt == 3:
+                    raise
+                time.sleep(0.025 * (attempt + 1))
+    finally:
+        temporary_path.unlink(missing_ok=True)
     return state
 
 

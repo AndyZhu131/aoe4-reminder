@@ -11,6 +11,7 @@ from .common import (
     get_image_size,
     load_json,
     rect_from_config,
+    scale_pixels,
     wait_before_capture,
 )
 
@@ -23,6 +24,7 @@ class CalibrationApp:
         self.monitor = monitor
         self.width = monitor["width"]
         self.height = monitor["height"]
+        self.pixel_multiplier = self.width / 2560
         self.active = "resources"
         self.rects = {
             region: clamp_rect(initial_rects[region], self.width, self.height)
@@ -55,16 +57,19 @@ class CalibrationApp:
         self.canvas.create_image(0, 0, image=self.background, anchor="nw")
 
         self.status = self.canvas.create_text(
-            16,
-            16,
+            self.px(16),
+            self.px(16),
             anchor="nw",
             fill="white",
-            font=("Segoe UI", 14, "bold"),
+            font=("Segoe UI", self.px(14, 1), "bold"),
             text="1 resources | 2 age+timer | 3 queue | drag move | corner resize | blank redraw | s save | q quit",
         )
 
         self.draw_all()
         self.bind_events()
+
+    def px(self, value, minimum=0):
+        return scale_pixels(value, self.pixel_multiplier, minimum)
 
     def bind_events(self):
         self.root.bind("1", lambda _event: self.select("resources"))
@@ -102,8 +107,8 @@ class CalibrationApp:
     def draw_region(self, region):
         x, y, width, height = self.rects[region]
         color = COLORS[region]
-        line_width = 4 if region == self.active else 2
-        dash = "" if region == self.active else (4, 4)
+        line_width = self.px(4 if region == self.active else 2, 1)
+        dash = "" if region == self.active else (self.px(4, 1), self.px(4, 1))
 
         self.items[region] = self.canvas.create_rectangle(
             x,
@@ -115,25 +120,28 @@ class CalibrationApp:
             dash=dash,
         )
         self.labels[region] = self.canvas.create_text(
-            x + 8,
-            y + 8,
+            x + self.px(8),
+            y + self.px(8),
             anchor="nw",
             fill=color,
-            font=("Segoe UI", 13, "bold"),
+            font=("Segoe UI", self.px(13, 1), "bold"),
             text=f"{region} [{x},{y},{width},{height}]",
         )
         self.handles[region] = self.canvas.create_rectangle(
-            x + width - 10,
-            y + height - 10,
-            x + width + 2,
-            y + height + 2,
+            x + width - self.px(10),
+            y + height - self.px(10),
+            x + width + self.px(2),
+            y + height + self.px(2),
             fill=color,
             outline="black",
         )
 
     def hit_handle(self, px, py, region):
         x, y, width, height = self.rects[region]
-        return abs(px - (x + width)) <= 14 and abs(py - (y + height)) <= 14
+        return (
+            abs(px - (x + width)) <= self.px(14)
+            and abs(py - (y + height)) <= self.px(14)
+        )
 
     def hit_rect(self, px, py, region):
         x, y, width, height = self.rects[region]
