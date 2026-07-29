@@ -16,7 +16,6 @@ let remindersPaused = false;
 let settingsOpen = false;
 let timerAnchor;
 let captureSettings = { resolution: "2560x1440", monitor: 1 };
-let monitorReady = false;
 let resetPending = false;
 
 function ageTier(age) {
@@ -68,8 +67,8 @@ function apmLabel() {
   return Number.isFinite(apm) ? String(Math.max(0, Math.round(apm))) : "--";
 }
 
-function reminderControlsReady(paused) {
-  return paused || (monitorReady && !resetPending && state.session?.status !== "starting");
+function reminderControlsReady() {
+  return !resetPending;
 }
 
 function shuffleSounds(sounds) {
@@ -168,7 +167,7 @@ function render() {
   );
   const villagerIdle = state.villagerReminder ?? state.villagerProductionActive === false;
   const paused = state.remindersPaused ?? remindersPaused;
-  const controlsReady = reminderControlsReady(paused);
+  const controlsReady = reminderControlsReady();
   overlay.className = [
     "overlay",
     !paused && villagerIdle ? "overlay--urgent" : "overlay--quiet",
@@ -253,14 +252,14 @@ function render() {
   document.getElementById("hide-button").addEventListener("click", () => window.aoeOverlay.hide());
   document.getElementById("close-button").addEventListener("click", () => window.aoeOverlay.close());
   document.getElementById("pause-reminders-button").addEventListener("click", async () => {
-    if (!reminderControlsReady(paused)) return;
+    if (!reminderControlsReady()) return;
     remindersPaused = await window.aoeOverlay.setRemindersPaused(!paused);
     state = { ...state, remindersPaused };
     console.info(`[overlay] reminders ${remindersPaused ? "paused" : "resumed"}`);
     render();
   });
   document.getElementById("reset-reminders-button").addEventListener("click", async (event) => {
-    if (!reminderControlsReady(paused)) return;
+    if (!reminderControlsReady()) return;
     event.currentTarget.disabled = true;
     resetPending = true;
     remindersPaused = await window.aoeOverlay.resetReminders();
@@ -325,11 +324,7 @@ async function start() {
     state = nextState;
     syncTimerAnchor(state);
     remindersPaused = nextState.remindersPaused ?? remindersPaused;
-    if (
-      nextState.session?.status === "tracking"
-      || (resetPending && nextState.session?.resetReady)
-    ) {
-      monitorReady = true;
+    if (resetPending && nextState.session?.resetReady) {
       resetPending = false;
     }
     render();
