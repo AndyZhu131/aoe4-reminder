@@ -23,6 +23,7 @@ from aoe4.common import load_region
 from aoe4.cli import build_parser
 from aoe4.villager import queue_geometry
 from aoe4.age import age_capture_layout, resolve_age_timer_rect
+from aoe4.apm import ActionPerMinuteTracker
 from aoe4.tech import (
     DEFAULT_TECH_CATALOG,
     DEFAULT_TECH_TEMPLATE_ROOT,
@@ -176,6 +177,32 @@ class TimerSynchronizerTests(unittest.TestCase):
 
         self.assertEqual(changing.mode, "tracking")
         self.assertEqual(unchanged.mode, "pause_checking")
+
+
+class ActionPerMinuteTrackerTests(unittest.TestCase):
+    def test_calculates_the_last_sixty_seconds_as_a_minute_rate(self):
+        tracker = ActionPerMinuteTracker(window_seconds=60)
+        tracker.record(0)
+        tracker.record(30)
+        tracker.record(59)
+
+        self.assertEqual(tracker.actions_per_minute(timestamp=60), 3)
+        self.assertEqual(tracker.actions_per_minute(timestamp=60.1), 2)
+
+    def test_ignores_actions_while_game_time_is_inactive(self):
+        tracker = ActionPerMinuteTracker(window_seconds=5)
+        tracker.record(1)
+        self.assertEqual(tracker.actions_per_minute(timestamp=1, active=False), 0)
+        tracker.record(2)
+
+        self.assertEqual(tracker.actions_per_minute(timestamp=2), 12)
+
+    def test_reset_clears_recorded_actions(self):
+        tracker = ActionPerMinuteTracker()
+        tracker.record(10)
+        tracker.reset()
+
+        self.assertEqual(tracker.actions_per_minute(timestamp=10), 0)
 
 
 class AgeProgressionTests(unittest.TestCase):

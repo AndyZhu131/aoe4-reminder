@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+from .apm import ActionPerMinuteTracker, WindowsActionListener
 from .age import load_monitor, read_age_roman, read_game_timer, resolve_age_timer_rect
 from .common import (
     RESOLUTION_MULTIPLIERS,
@@ -421,6 +422,7 @@ def build_disabled_state(decision, age="age_1", reset_ready=False):
             "estimatedTimer": format_timer(decision.estimated_seconds) or "00:00",
             "timerMismatchCount": decision.mismatch_count,
             "resetReady": reset_ready,
+            "actionsPerMinute": 0,
         },
     }
 
@@ -561,10 +563,14 @@ def command_watch_monitor(args):
         args.research_completion_delay,
     )
     villager_reminder_tracker = VillagerReminderTracker()
+    apm_tracker = ActionPerMinuteTracker()
+    apm_listener = WindowsActionListener(apm_tracker)
+    apm_listener.start()
     last_reset_token = None
     next_timer_check = 0.0
     next_age_check = 0.0
     next_queue_check = float("inf")
+    next_apm_check = 0.0
     current_state = build_disabled_state(
         TimerDecision("starting", None, 0, False)
     )
@@ -606,6 +612,7 @@ def command_watch_monitor(args):
                     args.research_completion_delay,
                 )
                 villager_reminder_tracker = VillagerReminderTracker()
+                apm_tracker.reset()
                 next_timer_check = now
                 next_age_check = now
                 next_queue_check = float("inf")
@@ -640,6 +647,7 @@ def command_watch_monitor(args):
                     next_queue_check = now
 
             if controls["paused"]:
+                apm_tracker.actions_per_minute(now, active=False)
                 if state_changed:
                     publish_overlay_state(args, current_state)
                 if args.once:
@@ -823,6 +831,14 @@ def command_watch_monitor(args):
                     flush=True,
                 )
                 next_queue_check = now + args.queue_interval
+                state_changed = True
+
+            if now >= next_apm_check:
+                current_state["session"]["actionsPerMinute"] = apm_tracker.actions_per_minute(
+                    now,
+                    active=synchronizer.mode in {"tracking", "pause_checking"},
+                )
+                next_apm_check = now + 1.0
                 state_changed = True
 
             if state_changed:

@@ -63,6 +63,11 @@ function timerLabel() {
   return formatTimer(timerAnchor.seconds + elapsed);
 }
 
+function apmLabel() {
+  const apm = Number(state.session?.actionsPerMinute);
+  return Number.isFinite(apm) ? String(Math.max(0, Math.round(apm))) : "--";
+}
+
 function reminderControlsReady(paused) {
   return paused || (monitorReady && !resetPending && state.session?.status !== "starting");
 }
@@ -208,6 +213,7 @@ function render() {
             <time class="game-timer" title="Game timer">${timerLabel()}</time>
             <div class="age-marker" title="Current age"><span>Age</span><strong>${ageLabel(state.age)}</strong></div>
           </div>
+          <div class="apm-tracker" title="Actions per minute"><span>APM</span><strong>${apmLabel()}</strong></div>
           <div class="reminder-actions">
             <button class="reminder-action" id="pause-reminders-button" type="button" title="${paused ? "Resume reminders" : "Pause reminders"}" aria-label="${paused ? "Resume reminders" : "Pause reminders"}" aria-pressed="${paused}" ${controlsReady ? "" : "disabled"}>${paused ? "&#9654;" : "&#10074;&#10074;"}</button>
             <button class="reminder-action" id="reset-reminders-button" type="button" title="Reset reminder session" aria-label="Reset reminder session" ${controlsReady ? "" : "disabled"}>&#8635;</button>

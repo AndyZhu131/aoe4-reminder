@@ -41,7 +41,11 @@ const startingLockedTechnologies = [
 let overlayWindow;
 let latestState;
 let remindersPaused = false;
-let captureSettings = { resolution: "2560x1440", monitor: 1 };
+let captureSettings = {
+  resolution: "2560x1440",
+  monitor: 1,
+  villagerSoundEnabled: true,
+};
 let calibrationProcess;
 let monitorProcess;
 let developerWindow;
@@ -78,6 +82,7 @@ function defaultState() {
       estimatedTimer: "00:00",
       timerMismatchCount: 0,
       resetReady: false,
+      actionsPerMinute: 0,
     },
   };
 }
@@ -498,15 +503,15 @@ app.whenReady().then(() => {
   });
   ipcMain.handle("overlay:reset-reminders", () => {
     const clearedDebugEvents = clearDebugEvents();
-    remindersPaused = false;
+    remindersPaused = true;
     writeOverlayControls({
-      paused: false,
+      paused: true,
       resetToken: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     });
-    latestState = defaultState();
+    latestState = { ...defaultState(), remindersPaused };
     appendDeveloperLog(
       "overlay",
-      `reminder session reset requested; debug events cleared=${clearedDebugEvents ?? "failed"}`,
+      `reminder session reset requested and paused; debug events cleared=${clearedDebugEvents ?? "failed"}`,
     );
     overlayWindow?.webContents.send("overlay:state", latestState);
     overlayWindow?.webContents.send("overlay:paused", remindersPaused);

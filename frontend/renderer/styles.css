@@ -219,6 +219,20 @@ body,
   gap: 5px;
 }
 
+.apm-tracker {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: rgba(220, 234, 233, 0.72);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.apm-tracker strong {
+  color: #bce8e2;
+  font-size: 15px;
+}
+
 .reminder-action {
   height: 30px;
   border: 1px solid rgba(180, 225, 224, 0.26);
@@ -252,7 +266,7 @@ body,
 .status-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 58px;
-  grid-template-rows: auto 30px;
+  grid-template-rows: auto auto 30px;
   align-items: center;
   gap: 8px 10px;
   padding: 10px 12px;
@@ -260,7 +274,7 @@ body,
 }
 
 .status-panel .villager-reminder {
-  grid-row: 1 / span 2;
+  grid-row: 1 / span 3;
   grid-column: 2;
   display: grid;
   align-self: start;
