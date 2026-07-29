@@ -14,13 +14,14 @@ from .common import (
     wait_before_capture,
 )
 from .resources import read_text_with_tesseract
+from .paths import bundled_path
 
 
 AGE_READER = "fixed-position-roman-template"
 # Fractions of the captured age/timer region, not fixed screen pixels.
 AGE_ROMAN_RECT = (38 / 125, 40 / 288, 50 / 125, 58 / 288)
 CALIBRATED_AGE_ROMAN_RECT = (52 / 155, 0.0, 70 / 155, 38 / 146)
-AGE_TEMPLATE_DIR = Path(__file__).resolve().parents[2] / "templates" / "age"
+AGE_TEMPLATE_DIR = bundled_path("templates", "age")
 AGE_TEMPLATE_THRESHOLD = 0.18
 TIMER_RECTS = (
     ("standard", (32 / 125, 142 / 288, 64 / 125, 28 / 288)),

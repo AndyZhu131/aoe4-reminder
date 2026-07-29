@@ -5,9 +5,11 @@ import sys
 import time
 from pathlib import Path
 
+from .paths import bundled_path
+
 
 REGIONS = ("resources", "ageAndTimer", "globalQueue")
-RESOLUTION_PROFILES_PATH = Path(__file__).resolve().parents[2] / "data" / "resolution-profiles.json"
+RESOLUTION_PROFILES_PATH = bundled_path("data", "resolution-profiles.json")
 RESOLUTION_MULTIPLIERS = {
     resolution: float(profile["multiplier"])
     for resolution, profile in json.loads(

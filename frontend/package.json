@@ -1,13 +1,70 @@
 {
-  "name": "aoe4-reminder-overlay",
-  "version": "0.1.0",
+  "name": "aoe4-reminder",
+  "version": "1.0.0",
   "private": true,
   "main": "main.cjs",
+  "author": "Andy Zhu",
+  "description": "AoE4 live production and research reminder overlay",
   "scripts": {
     "dev": "electron .",
-    "start": "electron ."
+    "start": "electron .",
+    "build:backend": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ..\\scripts\\build-backend.ps1",
+    "dist": "npm run build:backend && node ../scripts/build-installer.cjs"
   },
   "devDependencies": {
-    "electron": "^40.0.0"
+    "electron": "^40.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.andyzhu.aoe4reminder",
+    "productName": "AoE4 Reminder",
+    "directories": {
+      "output": "../release"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/.cache/**"
+    ],
+    "asar": true,
+    "extraResources": [
+      {
+        "from": "../dist/backend/aoe4-assistant",
+        "to": "backend"
+      },
+      {
+        "from": "../data",
+        "to": "app-assets/data"
+      },
+      {
+        "from": "../templates",
+        "to": "app-assets/templates"
+      },
+      {
+        "from": "../config",
+        "to": "app-assets/config"
+      },
+      {
+        "from": "../runtime/overlay-state.example.json",
+        "to": "app-assets/runtime/overlay-state.example.json"
+      },
+      {
+        "from": "../sound",
+        "to": "app-assets/sound"
+      }
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "AoE4-Reminder-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   }
 }

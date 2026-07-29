@@ -7,19 +7,26 @@ const { pathToFileURL } = require("node:url");
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
 const appRoot = path.resolve(__dirname, "..");
-const catalogPath = path.join(appRoot, "data", "technologies.json");
-const runtimeStatePath = path.join(appRoot, "runtime", "overlay-state.json");
-const runtimeControlsPath = path.join(appRoot, "runtime", "overlay-controls.json");
-const exampleStatePath = path.join(appRoot, "runtime", "overlay-state.example.json");
-const debugEventsPath = path.join(appRoot, "captures", "debug-events");
-const resolutionProfilesPath = path.join(appRoot, "data", "resolution-profiles.json");
+const staticAssetsRoot = app.isPackaged
+  ? path.join(process.resourcesPath, "app-assets")
+  : appRoot;
+const mutableDataRoot = app.isPackaged ? app.getPath("userData") : appRoot;
+const catalogPath = path.join(staticAssetsRoot, "data", "technologies.json");
+const runtimeRoot = path.join(mutableDataRoot, "runtime");
+const runtimeStatePath = path.join(runtimeRoot, "overlay-state.json");
+const runtimeControlsPath = path.join(runtimeRoot, "overlay-controls.json");
+const exampleStatePath = path.join(staticAssetsRoot, "runtime", "overlay-state.example.json");
+const debugEventsPath = path.join(mutableDataRoot, "captures", "debug-events");
+const resolutionProfilesPath = path.join(staticAssetsRoot, "data", "resolution-profiles.json");
+const userConfigRoot = path.join(mutableDataRoot, "config");
+const staticConfigRoot = path.join(staticAssetsRoot, "config");
 const calibrationPaths = {
-  "1920x1080": path.join(appRoot, "config", "calibration.1920x1080.json"),
-  "2560x1440": path.join(appRoot, "config", "calibration.2560x1440.json"),
-  "3840x2160": path.join(appRoot, "config", "calibration.3840x2160.json"),
+  "1920x1080": path.join(userConfigRoot, "calibration.1920x1080.json"),
+  "2560x1440": path.join(userConfigRoot, "calibration.2560x1440.json"),
+  "3840x2160": path.join(userConfigRoot, "calibration.3840x2160.json"),
 };
-const villagerIconPath = path.join(appRoot, "templates", "queue", "villager.png");
-const villagerSoundDirectory = path.join(appRoot, "sound", "villager_mc");
+const villagerIconPath = path.join(staticAssetsRoot, "templates", "queue", "villager.png");
+const villagerSoundDirectory = path.join(staticAssetsRoot, "sound", "villager_mc");
 const railSize = { width: 720, height: 178 };
 const overlayLayout = "horizontal-two-row-calibrated-top";
 const resolutionProfiles = readJson(resolutionProfilesPath);
@@ -58,6 +65,43 @@ function pythonCommand() {
   if (process.platform !== "win32") return "python3";
   return process.env.AOE4_PYTHON
     || (fs.existsSync(preferredWindowsPython) ? preferredWindowsPython : "python.exe");
+}
+
+function backendInvocation(argumentsList) {
+  if (app.isPackaged) {
+    return {
+      command: path.join(process.resourcesPath, "backend", "aoe4-assistant.exe"),
+      arguments: argumentsList,
+      cwd: staticAssetsRoot,
+    };
+  }
+  return {
+    command: pythonCommand(),
+    arguments: ["scripts/aoe4_assistant.py", ...argumentsList],
+    cwd: appRoot,
+  };
+}
+
+function packagedTesseractCommand() {
+  if (!app.isPackaged) return [];
+  return [
+    "--tesseract-cmd",
+    path.join(process.resourcesPath, "backend", "_internal", "tesseract", "tesseract.exe"),
+  ];
+}
+
+function ensureUserStorage() {
+  fs.mkdirSync(runtimeRoot, { recursive: true });
+  fs.mkdirSync(debugEventsPath, { recursive: true });
+  fs.mkdirSync(userConfigRoot, { recursive: true });
+  for (const resolution of templateResolutions) {
+    const fileName = `calibration.${resolution}.json`;
+    const source = path.join(staticConfigRoot, fileName);
+    const destination = path.join(userConfigRoot, fileName);
+    if (!fs.existsSync(destination) && fs.existsSync(source)) {
+      fs.copyFileSync(source, destination);
+    }
+  }
 }
 
 function readJson(filePath) {
@@ -150,7 +194,7 @@ function readCatalog() {
   return catalog.technologies.map((technology) => ({
     ...technology,
     iconUrl: pathToFileURL(
-      path.join(appRoot, catalog.templatesRoot, technology.templates[0]),
+      path.join(staticAssetsRoot, catalog.templatesRoot, technology.templates[0]),
     ).href,
   }));
 }
@@ -212,7 +256,7 @@ function calibrationPathForResolution(resolution = captureSettings.resolution) {
 function scaledCalibrationRegion(calibration, regionName) {
   if (Array.isArray(calibration.regions?.[regionName])) return calibration.regions[regionName];
   if (!calibration.scaleFrom) return null;
-  const source = readJson(path.join(appRoot, "config", calibration.scaleFrom));
+  const source = readJson(path.join(userConfigRoot, calibration.scaleFrom));
   const values = source.regions?.[regionName];
   if (!Array.isArray(values)) return null;
   return values.map((value) => scaleCalibrationPixels(Number(value), calibration.resolution));
@@ -297,22 +341,23 @@ function launchCalibration() {
     return Promise.resolve({ started: false, message: "Calibration is already running." });
   }
 
-  const python = pythonCommand();
+  const backend = backendInvocation([
+    "calibrate",
+    "--monitor",
+    String(captureSettings.monitor),
+    "--output",
+    calibrationPathForResolution(),
+    "--seed",
+    path.join(staticConfigRoot, "calibration.sample.json"),
+  ]);
   const child = spawn(
-    python,
-    [
-      "scripts/aoe4_assistant.py",
-      "calibrate",
-      "--monitor",
-      String(captureSettings.monitor),
-      "--output",
-      calibrationPathForResolution(),
-    ],
+    backend.command,
+    backend.arguments,
     {
-    cwd: appRoot,
-    detached: true,
-    stdio: "ignore",
-    windowsHide: false,
+      cwd: backend.cwd,
+      detached: true,
+      stdio: "ignore",
+      windowsHide: false,
     },
   );
   calibrationProcess = child;
@@ -365,9 +410,7 @@ function openDeveloperConsole() {
 function launchMonitor() {
   if (monitorProcess) return;
 
-  const python = pythonCommand();
-  const child = spawn(python, [
-    "scripts/aoe4_assistant.py",
+  const backend = backendInvocation([
     "watch-monitor",
     "--monitor",
     String(captureSettings.monitor),
@@ -375,9 +418,21 @@ function launchMonitor() {
     captureSettings.resolution,
     "--config",
     calibrationPathForResolution(),
+    "--output",
+    runtimeStatePath,
+    "--controls",
+    runtimeControlsPath,
+    "--catalog",
+    catalogPath,
+    "--template-root",
+    path.join(staticAssetsRoot, "templates", "tech"),
     "--debug-events",
-  ], {
-    cwd: appRoot,
+    "--debug-event-dir",
+    debugEventsPath,
+    ...packagedTesseractCommand(),
+  ]);
+  const child = spawn(backend.command, backend.arguments, {
+    cwd: backend.cwd,
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });
@@ -441,6 +496,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  ensureUserStorage();
   latestState = readState();
   captureSettings = readSettings();
   remindersPaused = readOverlayControls().paused === true;

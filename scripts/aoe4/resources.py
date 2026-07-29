@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .common import grab_region_bgr, load_json, load_region
+from .paths import bundled_path
 
 
 RESOURCE_ORDER = ("food", "wood", "gold", "stone")
@@ -141,6 +142,7 @@ def resolve_tesseract_cmd(tesseract_cmd):
         return Path(tesseract_cmd)
 
     candidates = [
+        bundled_path("tesseract", "tesseract.exe"),
         Path(os.environ.get("ProgramFiles", "C:/Program Files"))
         / "Tesseract-OCR"
         / "tesseract.exe",

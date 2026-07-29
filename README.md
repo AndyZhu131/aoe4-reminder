@@ -94,6 +94,13 @@ Opening the Electron overlay also starts the Python `watch-monitor` backend and
 stops it when the overlay process closes. Its logs are forwarded to the Electron
 console, so no separate monitor command is needed for normal use.
 
+## Windows Installer
+
+The distributable Windows installer bundles the Electron overlay, Python
+backend, vision dependencies, and Tesseract OCR. Players do not need Python,
+Node.js, or any OCR dependency installed. Build and clean-machine verification
+steps are in [docs/RELEASING.md](docs/RELEASING.md).
+
 The overlay polls `runtime/overlay-state.json` every half second. Copy
 `runtime/overlay-state.example.json` to that path to try the visual state. Its
 starting state is Age I at `00:00`, with Wheelbarrow active and common Feudal
