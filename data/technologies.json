@@ -62,6 +62,18 @@
       ]
     },
     {
+      "key": "textiles",
+      "displayName": "textiles",
+      "civilization": "sis",
+      "category": "economy",
+      "ageAvailable": "feudal",
+      "building": "mill",
+      "previewBeforeAge": true,
+      "templates": [
+        "economy/age2/textiles.png"
+      ]
+    },
+    {
       "key": "mine_2",
       "displayName": "mine_2",
       "civilization": "sis",

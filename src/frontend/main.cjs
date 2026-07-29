@@ -51,6 +51,7 @@ const startingLockedTechnologies = [
   "food_1",
   "mine_1",
   "survivalTechnique",
+  "textiles",
   "melee_def_1",
   "melee_atk_1",
   "range_def_1",
