@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld("aoeOverlay", {
   hide: () => ipcRenderer.invoke("overlay:hide"),
   close: () => ipcRenderer.invoke("overlay:close"),
   setCaptureSettings: (settings) => ipcRenderer.invoke("overlay:set-capture-settings", settings),
+  setVillagerSoundEnabled: (enabled) => ipcRenderer.invoke("overlay:set-villager-sound-enabled", enabled),
   setRemindersPaused: (paused) => ipcRenderer.invoke("overlay:set-reminders-paused", paused),
   resetReminders: () => ipcRenderer.invoke("overlay:reset-reminders"),
   openDeveloperConsole: () => ipcRenderer.invoke("developer-console:open"),

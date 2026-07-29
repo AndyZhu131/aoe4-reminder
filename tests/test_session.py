@@ -12,6 +12,7 @@ from aoe4.monitor import (
     AgeProgression,
     ResearchProgressTracker,
     TimerSynchronizer,
+    VillagerReminderTracker,
     available_technology_keys,
     clear_debug_events,
     locked_technology_keys,
@@ -251,6 +252,15 @@ class AgeProgressionTests(unittest.TestCase):
 
 
 class VillagerReminderTests(unittest.TestCase):
+    def test_requires_three_consecutive_missing_villager_checks(self):
+        tracker = VillagerReminderTracker(required_misses=3)
+
+        self.assertFalse(tracker.observe(villager_queued=False, game_seconds=60))
+        self.assertFalse(tracker.observe(villager_queued=False, game_seconds=61))
+        self.assertTrue(tracker.observe(villager_queued=False, game_seconds=62))
+        self.assertFalse(tracker.observe(villager_queued=True, game_seconds=63))
+        self.assertFalse(tracker.observe(villager_queued=False, game_seconds=64))
+
     def test_reminds_before_twenty_minutes_without_a_villager(self):
         self.assertTrue(
             should_remind_villager(

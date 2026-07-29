@@ -4,6 +4,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+
 const appRoot = path.resolve(__dirname, "..");
 const catalogPath = path.join(appRoot, "data", "technologies.json");
 const runtimeStatePath = path.join(appRoot, "runtime", "overlay-state.json");
@@ -17,6 +19,7 @@ const calibrationPaths = {
   "3840x2160": path.join(appRoot, "config", "calibration.3840x2160.json"),
 };
 const villagerIconPath = path.join(appRoot, "templates", "queue", "villager.png");
+const villagerSoundDirectory = path.join(appRoot, "sound", "villager_mc");
 const railSize = { width: 720, height: 178 };
 const overlayLayout = "horizontal-two-row-calibrated-top";
 const resolutionProfiles = readJson(resolutionProfilesPath);
@@ -147,6 +150,17 @@ function readCatalog() {
   }));
 }
 
+function readVillagerAlertSounds() {
+  try {
+    return fs.readdirSync(villagerSoundDirectory)
+      .filter((fileName) => /\.(ogg|mp3)$/i.test(fileName))
+      .sort()
+      .map((fileName) => pathToFileURL(path.join(villagerSoundDirectory, fileName)).href);
+  } catch {
+    return [];
+  }
+}
+
 function savedPosition() {
   try {
     const position = readJson(path.join(app.getPath("userData"), "overlay-position.json"));
@@ -164,9 +178,10 @@ function readSettings() {
     return {
       resolution: templateResolutions.has(settings.resolution) ? settings.resolution : "2560x1440",
       monitor: settings.monitor === 2 ? 2 : 1,
+      villagerSoundEnabled: settings.villagerSoundEnabled !== false,
     };
   } catch {
-    return { resolution: "2560x1440", monitor: 1 };
+    return { resolution: "2560x1440", monitor: 1, villagerSoundEnabled: true };
   }
 }
 
@@ -429,6 +444,7 @@ app.whenReady().then(() => {
     state: latestState,
     technologies: readCatalog(),
     villagerIconUrl: pathToFileURL(villagerIconPath).href,
+    villagerAlertSounds: readVillagerAlertSounds(),
     captureSettings,
     remindersPaused,
   }));
@@ -441,6 +457,7 @@ app.whenReady().then(() => {
         ? settings.resolution
         : captureSettings.resolution,
       monitor: settings?.monitor === 2 ? 2 : 1,
+      villagerSoundEnabled: captureSettings.villagerSoundEnabled,
     };
     persistSettings();
     appendDeveloperLog(
@@ -454,6 +471,18 @@ app.whenReady().then(() => {
     }
     restartMonitor();
     return captureSettings;
+  });
+  ipcMain.handle("overlay:set-villager-sound-enabled", (_event, enabled) => {
+    captureSettings = {
+      ...captureSettings,
+      villagerSoundEnabled: Boolean(enabled),
+    };
+    persistSettings();
+    appendDeveloperLog(
+      "overlay",
+      `villager alert sound ${captureSettings.villagerSoundEnabled ? "enabled" : "disabled"}`,
+    );
+    return captureSettings.villagerSoundEnabled;
   });
   ipcMain.handle("overlay:set-reminders-paused", (_event, paused) => {
     remindersPaused = Boolean(paused);

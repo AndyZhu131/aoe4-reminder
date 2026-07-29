@@ -374,6 +374,24 @@ def should_remind_villager(villager_queued, game_seconds):
     )
 
 
+class VillagerReminderTracker:
+    """Require repeated missing-queue reads before alerting the player."""
+
+    def __init__(self, required_misses=3):
+        self.required_misses = required_misses
+        self.consecutive_misses = 0
+
+    def observe(self, villager_queued, game_seconds):
+        if game_seconds is None or game_seconds >= VILLAGER_REMINDER_CUTOFF_SECONDS:
+            self.consecutive_misses = 0
+            return False
+        if villager_queued:
+            self.consecutive_misses = 0
+            return False
+        self.consecutive_misses += 1
+        return self.consecutive_misses >= self.required_misses
+
+
 def read_overlay_controls(path):
     """Read optional UI controls without interrupting the monitor loop."""
 
@@ -542,6 +560,7 @@ def command_watch_monitor(args):
         args.research_confirmation_wins,
         args.research_completion_delay,
     )
+    villager_reminder_tracker = VillagerReminderTracker()
     last_reset_token = None
     next_timer_check = 0.0
     next_age_check = 0.0
@@ -586,6 +605,7 @@ def command_watch_monitor(args):
                     args.research_confirmation_wins,
                     args.research_completion_delay,
                 )
+                villager_reminder_tracker = VillagerReminderTracker()
                 next_timer_check = now
                 next_age_check = now
                 next_queue_check = float("inf")
@@ -734,7 +754,7 @@ def command_watch_monitor(args):
                 ]
                 current_state["villager_production_active"] = villager_result["villagerQueued"]
                 previous_villager_reminder = current_state["villager_reminder"]
-                current_state["villager_reminder"] = should_remind_villager(
+                current_state["villager_reminder"] = villager_reminder_tracker.observe(
                     villager_result["villagerQueued"],
                     synchronizer.estimated_seconds(now),
                 )
