@@ -7,7 +7,7 @@ Players do not need Python, Node.js, or Tesseract installed separately.
 
 - Windows x64
 - Python 3.13 (or set `AOE4_PYTHON` to the Python executable used to build)
-- Node.js and the frontend dependencies (`npm.cmd install` in `frontend/`)
+- Node.js and the frontend dependencies (`npm.cmd install` in `src/frontend/`)
 - Tesseract OCR at `C:\Program Files\Tesseract-OCR`, or set
   `AOE4_TESSERACT_ROOT` to its installation directory
 
@@ -16,16 +16,18 @@ Players do not need Python, Node.js, or Tesseract installed separately.
 From the repository root:
 
 ```powershell
-Set-Location frontend
 npm.cmd run dist
 ```
 
 The command creates a private `.venv-build` environment, freezes the backend
 into `dist/backend/aoe4-assistant/`, then produces the NSIS installer under a
 versioned directory such as `release/1.0.0/`. The directory is derived from
-`frontend/package.json`.
+`src/frontend/package.json`.
 
-`scripts/build-backend.ps1` includes the Tesseract executable, its DLLs, and
+Runtime dependencies are listed in `src/requirements.txt`; release-only build
+dependencies are in `src/requirements-build.txt`.
+
+`src/backend/build/build-backend.ps1` includes the Tesseract executable, its DLLs, and
 its language data. The Electron package copies the backend, templates,
 calibration defaults, technology catalog, and alert sounds into its resources.
 
@@ -39,7 +41,7 @@ the installation directory.
 
 ## Release checklist
 
-1. Run `npm.cmd run dist` from `frontend/`.
+1. Run `npm.cmd run dist` from the repository root.
 2. Install the generated `release/<version>/AoE4-Reminder-Setup-*.exe` on a Windows account that
    does not have Python or Tesseract installed.
 3. Open the app, confirm the overlay starts, then run a calibration and a live

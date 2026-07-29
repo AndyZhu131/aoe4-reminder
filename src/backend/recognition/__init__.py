@@ -1,0 +1,1 @@
+"""Game HUD recognition readers."""

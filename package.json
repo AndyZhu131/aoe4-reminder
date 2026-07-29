@@ -1,0 +1,9 @@
+{
+  "name": "aoe4-reminder-workspace",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix src/frontend run dev",
+    "build:backend": "npm --prefix src/frontend run build:backend",
+    "dist": "npm --prefix src/frontend run dist"
+  }
+}
