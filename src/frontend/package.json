@@ -18,6 +18,7 @@
   "build": {
     "appId": "com.andyzhu.aoe4reminder",
     "productName": "AoE4 Reminder",
+    "icon": "assets/aoe4-reminder.ico",
     "directories": {
       "output": "../release"
     },

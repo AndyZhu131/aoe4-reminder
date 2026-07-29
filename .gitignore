@@ -8,7 +8,7 @@ scripts/__pycache__/
 src/tests/fixtures/template_matching/*-match.png
 src/frontend/node_modules/
 .venv-build/
-build/
+/build/
 dist/
 release/
 runtime/overlay-state.json

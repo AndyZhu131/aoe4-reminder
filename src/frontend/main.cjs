@@ -1,10 +1,20 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, screen } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  globalShortcut,
+  ipcMain,
+  Menu,
+  nativeImage,
+  screen,
+  Tray,
+} = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+if (process.platform === "win32") app.setAppUserModelId("com.andyzhu.aoe4reminder");
 
 const sourceRoot = path.resolve(__dirname, "..");
 const repositoryRoot = path.resolve(sourceRoot, "..");
@@ -41,6 +51,7 @@ const startingLockedTechnologies = [
   "food_1",
   "mine_1",
   "survivalTechnique",
+  "textiles",
   "melee_def_1",
   "melee_atk_1",
   "range_def_1",
@@ -50,6 +61,7 @@ const startingLockedTechnologies = [
 ];
 
 let overlayWindow;
+let tray;
 let latestState;
 let remindersPaused = false;
 let captureSettings = {
@@ -195,10 +207,13 @@ function readState() {
 
 function readCatalog() {
   const catalog = readJson(catalogPath);
+  const catalogTemplateRoot = String(catalog.templatesRoot || "tech")
+    .replace(/\\/g, "/")
+    .replace(/^(?:src\/)?templates\//, "");
   return catalog.technologies.map((technology) => ({
     ...technology,
     iconUrl: pathToFileURL(
-      path.join(templateAssetsRoot, catalog.templatesRoot, technology.templates[0]),
+      path.join(templateAssetsRoot, catalogTemplateRoot, technology.templates[0]),
     ).href,
   }));
 }
@@ -338,6 +353,30 @@ function toggleOverlayVisibility() {
   } else {
     overlayWindow.showInactive();
   }
+}
+
+function createTray() {
+  if (tray) return;
+
+  const icon = nativeImage.createFromPath(villagerIconPath).resize({ width: 32, height: 32 });
+  tray = new Tray(icon);
+  tray.setToolTip("AoE4 Reminder");
+  tray.setContextMenu(Menu.buildFromTemplate([
+    {
+      label: "Show overlay",
+      click: () => overlayWindow?.showInactive(),
+    },
+    {
+      label: "Hide overlay",
+      click: () => overlayWindow?.hide(),
+    },
+    { type: "separator" },
+    {
+      label: "Quit AoE4 Reminder",
+      click: () => app.quit(),
+    },
+  ]));
+  tray.on("click", toggleOverlayVisibility);
 }
 
 function launchCalibration() {
@@ -589,6 +628,7 @@ app.whenReady().then(() => {
   ipcMain.handle("overlay:calibrate", launchCalibration);
   ipcMain.on("overlay:resize", (_event, height) => resizeOverlay(height));
   createWindow();
+  createTray();
   launchMonitor();
   fs.watchFile(runtimeStatePath, { interval: 500 }, sendState);
   globalShortcut.register("CommandOrControl+Alt+O", toggleOverlayVisibility);
@@ -605,6 +645,8 @@ app.on("before-quit", (event) => {
     quitFinished = true;
     fs.unwatchFile(runtimeStatePath);
     globalShortcut.unregisterAll();
+    tray?.destroy();
+    tray = undefined;
     clearDebugEvents();
     app.quit();
   };
