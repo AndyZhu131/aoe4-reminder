@@ -25,6 +25,7 @@ from aoe4.age import age_capture_layout, resolve_age_timer_rect
 from aoe4.tech import (
     DEFAULT_TECH_CATALOG,
     DEFAULT_TECH_TEMPLATE_ROOT,
+    default_research_threshold,
     load_technology_catalog,
 )
 
@@ -87,6 +88,11 @@ class CalibrationProfileTests(unittest.TestCase):
         self.assertEqual(queue_geometry(0.75), (36, 8, 44))
         self.assertEqual(queue_geometry(1.0), (48, 10, 58))
         self.assertEqual(queue_geometry(1.5), (72, 15, 87))
+
+    def test_research_threshold_is_calibrated_per_template_resolution(self):
+        self.assertEqual(default_research_threshold("1920x1080"), 0.80)
+        self.assertEqual(default_research_threshold("2560x1440"), 0.80)
+        self.assertEqual(default_research_threshold("3840x2160"), 0.80)
 
     def test_calibrated_age_region_rebases_to_the_selected_monitor(self):
         args = SimpleNamespace(

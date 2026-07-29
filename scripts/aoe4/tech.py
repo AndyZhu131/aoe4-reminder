@@ -20,12 +20,21 @@ from .common import (
 
 RESEARCH_READER = "tech-template-catalog"
 RESEARCH_MATCH_METHOD = "TM_CCOEFF_NORMED"
+RESEARCH_THRESHOLDS = {
+    "1920x1080": 0.80,
+    "2560x1440": 0.80,
+    "3840x2160": 0.80,
+}
 DEFAULT_TECH_CATALOG = "data/technologies.json"
 DEFAULT_TECH_TEMPLATE_ROOT = "templates/tech"
 RESEARCH_CAPTURE_RECTS = {
     "top": (10, 10, 48, 46),
     "bottom": (10, 66, 48, 46),
 }
+
+
+def default_research_threshold(template_resolution):
+    return RESEARCH_THRESHOLDS.get(template_resolution, RESEARCH_THRESHOLDS["2560x1440"])
 
 
 def extract_research_capture(source_path, output_path, row, multiplier=1.0):

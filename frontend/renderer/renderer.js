@@ -246,7 +246,10 @@ async function start() {
     state = nextState;
     syncTimerAnchor(state);
     remindersPaused = nextState.remindersPaused ?? remindersPaused;
-    if (nextState.session?.status === "tracking") {
+    if (
+      nextState.session?.status === "tracking"
+      || (resetPending && nextState.session?.resetReady)
+    ) {
       monitorReady = true;
       resetPending = false;
     }

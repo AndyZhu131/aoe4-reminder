@@ -23,6 +23,7 @@ from .tech import (
     DEFAULT_TECH_CATALOG,
     DEFAULT_TECH_TEMPLATE_ROOT,
     crop_research_queue,
+    default_research_threshold,
     load_technology_catalog,
     match_research_technologies,
     save_research_debug_image,
@@ -353,7 +354,11 @@ def villager_reader_args(args):
 def research_reader_args(args):
     resolution_scale = resolution_multiplier(args.template_resolution)
     return SimpleNamespace(
-        threshold=args.research_threshold,
+        threshold=(
+            args.research_threshold
+            if args.research_threshold is not None
+            else default_research_threshold(args.template_resolution)
+        ),
         scales=scaled_template_scales(args.research_scales, args.template_resolution),
         border_mask_ratio=args.research_border_mask_ratio,
         min_distance=scale_pixels(args.research_min_distance, resolution_scale, 1),
@@ -382,7 +387,7 @@ def read_overlay_controls(path):
     }
 
 
-def build_disabled_state(decision, age="age_1"):
+def build_disabled_state(decision, age="age_1", reset_ready=False):
     return {
         "age": display_age(age),
         "villager_production_active": None,
@@ -397,6 +402,7 @@ def build_disabled_state(decision, age="age_1"):
             "status": decision.mode,
             "estimatedTimer": format_timer(decision.estimated_seconds) or "00:00",
             "timerMismatchCount": decision.mismatch_count,
+            "resetReady": reset_ready,
         },
     }
 
@@ -583,8 +589,10 @@ def command_watch_monitor(args):
                 next_timer_check = now
                 next_age_check = now
                 next_queue_check = float("inf")
+                last_reset_token = controls["resetToken"]
                 current_state = build_disabled_state(
-                    TimerDecision("starting", None, 0, False)
+                    TimerDecision("starting", None, 0, False),
+                    reset_ready=True,
                 )
                 apply_technology_state(
                     current_state,
@@ -592,7 +600,6 @@ def command_watch_monitor(args):
                     current_state["age"],
                     research_tracker,
                 )
-                last_reset_token = controls["resetToken"]
                 state_changed = True
                 print({"control": "reset", "status": "handled"}, flush=True)
 
@@ -677,6 +684,7 @@ def command_watch_monitor(args):
                     current_state = build_disabled_state(
                         decision,
                         age_progression.age,
+                        reset_ready=last_reset_token is not None,
                     )
                     apply_technology_state(
                         current_state,
@@ -852,7 +860,7 @@ def add_monitor_args(parser):
     parser.add_argument("--catalog", default=DEFAULT_TECH_CATALOG)
     parser.add_argument("--template-root", default=DEFAULT_TECH_TEMPLATE_ROOT)
     parser.add_argument("--categories", nargs="+", default=["economy", "military"])
-    parser.add_argument("--research-threshold", type=float, default=0.95)
+    parser.add_argument("--research-threshold", type=float)
     parser.add_argument(
         "--research-scales",
         type=parse_scales,

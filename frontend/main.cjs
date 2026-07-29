@@ -74,6 +74,7 @@ function defaultState() {
       status: "starting",
       estimatedTimer: "00:00",
       timerMismatchCount: 0,
+      resetReady: false,
     },
   };
 }
@@ -225,13 +226,13 @@ function defaultPosition(height = railSize.height) {
   const region = calibratedAgeTimerRegion();
   if (region) {
     const display = screen.getDisplayNearestPoint({ x: region.x, y: region.y }).workArea;
-    const desired = { x: region.x + region.width + 20, y: display.y };
+    const desired = { x: region.x + region.width + 20, y: display.y + 1 };
     return {
       x: Math.max(
         display.x + 8,
         Math.min(desired.x, display.x + display.width - railSize.width - 8),
       ),
-      y: display.y,
+      y: desired.y,
     };
   }
   return {
