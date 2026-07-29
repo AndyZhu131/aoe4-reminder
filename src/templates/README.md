@@ -5,7 +5,7 @@ Put small cropped PNG templates here for phase 1 matching.
 Suggested first template:
 
 ```text
-templates/queue/villager.png
+src/templates/queue/villager.png
 ```
 
 Capture a global queue crop with `python src/backend/app/aoe4_assistant.py capture`, then crop a clean villager queue tile with no count number and save it as the template. The template must include the dark-blue queue-tile background as well as the villager artwork.
@@ -25,7 +25,7 @@ data/technologies.json
 The templates live under:
 
 ```text
-templates/tech/
+src/templates/tech/
 ```
 
 Quick test:

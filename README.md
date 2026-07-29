@@ -128,17 +128,16 @@ To drive the overlay from the live readers, start the session coordinator:
 python src/backend/app/aoe4_assistant.py watch-monitor
 ```
 
-It begins with reminders disabled, anchors a monotonic local clock from the
-recognized game timer, then validates that timer every five seconds. The
-overlay advances that confirmed time locally between validations. A timer
-mismatch keeps the current state while switching to one-second verification
-checks. The monitor marks the game paused only after five matching frozen timer
-reads within six samples; ordinary timer recovery needs three confirming reads
-within five samples. Age is checked every five seconds, never moves backward,
-and advances after a two-of-three majority vote from one-second confirmation
-reads. The coordinator is the only backend-to-frontend bridge: it
-writes `runtime/overlay-state.json`, which keeps recognition and reminder logic
-out of Electron.
+After a reset, it begins paused. Once resumed, a valid timer OCR read anchors a
+smooth local clock and OCR runs every five seconds only to look for a game
+pause. Two identical reads begin five one-second pause-check reads; at least
+three matching the previous timer value confirm a pause. A later, larger timer
+read resumes and reanchors the clock. Age is checked every five seconds, never
+moves backward or skips an age, and advances only after four of five one-second
+confirmation reads agree. The coordinator is the only backend-to-frontend
+bridge: it writes `runtime/overlay-state.json`, which keeps recognition and
+reminder logic out of Electron. See [Reminder trigger logic](docs/REMINDER_LOGIC.md)
+for the canonical behavior.
 
 The central monitor owns cross-reader reminder policy. The villager recognizer
 only reports whether an icon is queued. The villager alert appears before
@@ -151,9 +150,9 @@ python src/backend/app/aoe4_assistant.py overlay-state --age age_2 --villager-pr
 ```
 
 The rail pulses a large villager icon only while villager production is idle.
-The pause button suppresses urgency and flashing while recognition continues;
-the reset button clears the current monitor session's timer, age, and technology
-history.
+The pause button stops live recognition and APM collection while keeping the
+current overlay state visible. The reset button clears the timer, age,
+technology history, and session debug captures, then leaves reminders paused.
   It renders only technologies unlocked by the detected age and their catalog
   prerequisites. Unresearched technologies carry forward through later ages;
   upgrade chains such as `wood_1` -> `wood_2` -> `wood_3` never skip a level.
