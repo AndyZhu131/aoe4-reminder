@@ -1,0 +1,27 @@
+html,
+body {
+  width: 29px;
+  height: 29px;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+button {
+  width: 29px;
+  height: 29px;
+  border: 0;
+  border-left: 1px solid rgba(180, 225, 224, 0.18);
+  background: rgba(9, 13, 17, 0.54);
+  color: #ffcc78;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1;
+}
+
+button:hover,
+button:focus-visible {
+  background: rgba(101, 210, 215, 0.28);
+  outline: none;
+}

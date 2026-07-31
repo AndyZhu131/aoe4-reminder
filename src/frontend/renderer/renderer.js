@@ -17,6 +17,12 @@ let settingsOpen = false;
 let timerAnchor;
 let captureSettings = { resolution: "2560x1440", monitor: 1 };
 let resetPending = false;
+let interactionLocked = true;
+
+function applyOverlayScale() {
+  const scale = Number(captureSettings.overlayScale) || 1;
+  document.documentElement.style.setProperty("--overlay-scale", String(scale));
+}
 
 function ageTier(age) {
   const match = /^age_([1-4])$/.exec(age || "");
@@ -150,6 +156,7 @@ function renderTechnology(technology, detected, locked) {
 
 function render() {
   const overlay = document.getElementById("overlay");
+  applyOverlayScale();
   const researched = new Set(state.researchedTechnologies || []);
   const detected = new Set(state.detectedTechnologies || []);
   const lockedTechnologies = new Set(state.lockedTechnologies || []);
@@ -173,6 +180,7 @@ function render() {
     !paused && villagerIdle ? "overlay--urgent" : "overlay--quiet",
     !paused && villagerIdle ? "overlay--flashing" : "",
     paused ? "overlay--paused" : "",
+    interactionLocked ? "overlay--interaction-locked" : "",
     "overlay--visible",
   ].filter(Boolean).join(" ");
 
@@ -183,6 +191,7 @@ function render() {
         <button class="icon-button" id="settings-button" type="button" title="Settings" aria-label="Settings">&#9881;</button>
         <button class="icon-button" id="hide-button" type="button" title="Hide overlay" aria-label="Hide overlay">&minus;</button>
         <button class="icon-button" id="close-button" type="button" title="Close overlay" aria-label="Close overlay">&times;</button>
+        <button class="icon-button interaction-lock-button" id="interaction-lock-button" type="button" title="${interactionLocked ? "Overlay is click-through. Press Ctrl+Alt+L to unlock." : "Lock overlay controls (Ctrl+Alt+L)"}" aria-label="${interactionLocked ? "Unlock overlay controls" : "Lock overlay controls"}" aria-pressed="${interactionLocked}">${interactionLocked ? "&#128274;" : "&#128275;"}</button>
       </div>
       ${settingsOpen ? `
         <div class="settings-panel">
@@ -249,6 +258,11 @@ function render() {
     settingsOpen = !settingsOpen;
     render();
   });
+  document.getElementById("interaction-lock-button").addEventListener("click", async () => {
+    if (!interactionLocked) settingsOpen = false;
+    interactionLocked = await window.aoeOverlay.setInteractionLocked(!interactionLocked);
+    render();
+  });
   document.getElementById("hide-button").addEventListener("click", () => window.aoeOverlay.hide());
   document.getElementById("close-button").addEventListener("click", () => window.aoeOverlay.close());
   document.getElementById("pause-reminders-button").addEventListener("click", async () => {
@@ -303,6 +317,14 @@ function render() {
 
   requestAnimationFrame(() => {
     const rail = overlay.querySelector(".rail");
+    const lockButton = document.getElementById("interaction-lock-button");
+    const lockBounds = lockButton.getBoundingClientRect();
+    window.aoeOverlay.setLockControlBounds({
+      x: lockBounds.x,
+      y: lockBounds.y,
+      width: lockBounds.width,
+      height: lockBounds.height,
+    });
     window.aoeOverlay.resize(rail.scrollHeight + 16);
   });
   syncVillagerAlertSound();
@@ -318,6 +340,7 @@ async function start() {
   captureSettings = bootstrap.captureSettings;
   villagerSoundEnabled = captureSettings.villagerSoundEnabled !== false;
   remindersPaused = bootstrap.remindersPaused;
+  interactionLocked = bootstrap.interactionLocked === true;
   render();
 
   window.aoeOverlay.onState((nextState) => {
@@ -332,6 +355,11 @@ async function start() {
   window.aoeOverlay.onPaused((paused) => {
     remindersPaused = paused;
     state = { ...state, remindersPaused };
+    render();
+  });
+  window.aoeOverlay.onInteractionLocked((locked) => {
+    interactionLocked = locked;
+    if (locked) settingsOpen = false;
     render();
   });
 }

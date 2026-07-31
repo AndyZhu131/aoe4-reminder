@@ -42,6 +42,7 @@ const calibrationPaths = {
 const villagerIconPath = path.join(templateAssetsRoot, "queue", "villager.png");
 const villagerSoundDirectory = path.join(staticAssetsRoot, "sound", "villager_mc");
 const railSize = { width: 720, height: 178 };
+const lockControlSize = 29;
 const overlayLayout = "horizontal-two-row-calibrated-top";
 const resolutionProfiles = readJson(resolutionProfilesPath);
 const templateResolutions = new Set(Object.keys(resolutionProfiles));
@@ -61,9 +62,12 @@ const startingLockedTechnologies = [
 ];
 
 let overlayWindow;
+let lockWindow;
+let lockControlBounds;
 let tray;
 let latestState;
 let remindersPaused = false;
+let overlayInteractionLocked = true;
 let captureSettings = {
   resolution: "2560x1440",
   monitor: 1,
@@ -260,8 +264,50 @@ function persistSettings() {
   );
 }
 
+function interactionSettingsPath() {
+  return path.join(app.getPath("userData"), "overlay-interaction.json");
+}
+
+function readInteractionLock() {
+  try {
+    return readJson(interactionSettingsPath()).locked !== false;
+  } catch {
+    return true;
+  }
+}
+
+function persistInteractionLock() {
+  fs.writeFileSync(
+    interactionSettingsPath(),
+    JSON.stringify({ locked: overlayInteractionLocked }, null, 2),
+  );
+}
+
 function resolutionMultiplier(resolution = captureSettings.resolution) {
   return resolutionProfiles[resolution]?.multiplier || 1;
+}
+
+function overlayScale() {
+  return resolutionMultiplier();
+}
+
+function captureSettingsForRenderer() {
+  return {
+    ...captureSettings,
+    overlayScale: overlayScale(),
+  };
+}
+
+function scaledOverlaySize(height = railSize.height) {
+  const scale = overlayScale();
+  return {
+    width: Math.round(railSize.width * scale),
+    height: Math.round(height * scale),
+  };
+}
+
+function scaledLockControlSize() {
+  return Math.round(lockControlSize * overlayScale());
 }
 
 function scaleCalibrationPixels(value, resolution = captureSettings.resolution) {
@@ -304,22 +350,23 @@ function calibratedAgeTimerRegion() {
   }
 }
 
-function defaultPosition(height = railSize.height) {
+function defaultPosition(height = scaledOverlaySize().height) {
   const workArea = selectedDisplay().workArea;
   const region = calibratedAgeTimerRegion();
+  const { width } = scaledOverlaySize();
   if (region) {
     const display = screen.getDisplayNearestPoint({ x: region.x, y: region.y }).workArea;
     const desired = { x: region.x + region.width + 20, y: display.y + 1 };
     return {
       x: Math.max(
         display.x + 8,
-        Math.min(desired.x, display.x + display.width - railSize.width - 8),
+        Math.min(desired.x, display.x + display.width - width - 8),
       ),
       y: desired.y,
     };
   }
   return {
-    x: workArea.x + Math.max(8, Math.round((workArea.width - railSize.width) / 2)),
+    x: workArea.x + Math.max(8, Math.round((workArea.width - width) / 2)),
     y: workArea.y + Math.max(8, workArea.height - height - 28),
   };
 }
@@ -343,16 +390,116 @@ function resizeOverlay(requestedHeight) {
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
   const display = screen.getDisplayMatching(overlayWindow.getBounds());
   const maxHeight = Math.max(96, display.workArea.height - 16);
-  const height = Math.max(42, Math.min(Math.round(requestedHeight), maxHeight));
-  overlayWindow.setSize(railSize.width, height);
+  const { width } = scaledOverlaySize();
+  const height = Math.max(
+    Math.round(42 * overlayScale()),
+    Math.min(Math.round(requestedHeight * overlayScale()), maxHeight),
+  );
+  overlayWindow.setSize(width, height);
+  syncLockWindow();
+}
+
+function applyOverlayScale() {
+  lockControlBounds = undefined;
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    const { width, height } = scaledOverlaySize();
+    overlayWindow.webContents.setZoomFactor(1);
+    overlayWindow.setSize(width, height);
+  }
+  if (lockWindow && !lockWindow.isDestroyed()) {
+    const size = scaledLockControlSize();
+    lockWindow.webContents.setZoomFactor(overlayScale());
+    lockWindow.setSize(size, size);
+  }
+  syncLockWindow();
 }
 
 function toggleOverlayVisibility() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
   if (overlayWindow.isVisible()) {
-    overlayWindow.hide();
+    hideOverlay();
   } else {
-    overlayWindow.showInactive();
+    showOverlay();
   }
+}
+
+function showOverlay() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  overlayWindow.showInactive();
+  syncLockWindow();
+}
+
+function hideOverlay() {
+  overlayWindow?.hide();
+  lockWindow?.hide();
+}
+
+function syncLockWindow() {
+  if (!lockWindow || lockWindow.isDestroyed()) return;
+  if (
+    !overlayInteractionLocked
+    || !overlayWindow
+    || overlayWindow.isDestroyed()
+    || !overlayWindow.isVisible()
+  ) {
+    lockWindow.hide();
+    return;
+  }
+
+  const bounds = overlayWindow.getContentBounds();
+  const scale = overlayScale();
+  const control = lockControlBounds || {
+    x: bounds.width - Math.round(37 * scale),
+    y: Math.round(10 * scale),
+    width: scaledLockControlSize(),
+    height: scaledLockControlSize(),
+  };
+  lockWindow.setBounds({
+    x: bounds.x + Math.round(control.x),
+    y: bounds.y + Math.round(control.y),
+    width: Math.max(1, Math.round(control.width)),
+    height: Math.max(1, Math.round(control.height)),
+  });
+  lockWindow.setIgnoreMouseEvents(false);
+  lockWindow.showInactive();
+  lockWindow.moveTop();
+}
+
+function refreshTrayMenu() {
+  if (!tray) return;
+  const locked = overlayInteractionLocked;
+  tray.setContextMenu(Menu.buildFromTemplate([
+    {
+      label: "Show overlay",
+      click: showOverlay,
+    },
+    {
+      label: "Hide overlay",
+      click: hideOverlay,
+    },
+    {
+      label: locked ? "Unlock overlay controls (Ctrl+Alt+L)" : "Lock overlay controls (Ctrl+Alt+L)",
+      click: () => setOverlayInteractionLocked(!locked),
+    },
+    { type: "separator" },
+    {
+      label: "Quit AoE4 Reminder",
+      click: () => app.quit(),
+    },
+  ]));
+}
+
+function setOverlayInteractionLocked(locked, { persist = true } = {}) {
+  overlayInteractionLocked = Boolean(locked);
+  if (persist) persistInteractionLock();
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.setIgnoreMouseEvents(overlayInteractionLocked, { forward: true });
+    overlayWindow.setFocusable(!overlayInteractionLocked);
+    overlayWindow.webContents.send("overlay:interaction-locked", overlayInteractionLocked);
+  }
+  syncLockWindow();
+  refreshTrayMenu();
+  return overlayInteractionLocked;
 }
 
 function createTray() {
@@ -361,22 +508,38 @@ function createTray() {
   const icon = nativeImage.createFromPath(villagerIconPath).resize({ width: 32, height: 32 });
   tray = new Tray(icon);
   tray.setToolTip("AoE4 Reminder");
-  tray.setContextMenu(Menu.buildFromTemplate([
-    {
-      label: "Show overlay",
-      click: () => overlayWindow?.showInactive(),
-    },
-    {
-      label: "Hide overlay",
-      click: () => overlayWindow?.hide(),
-    },
-    { type: "separator" },
-    {
-      label: "Quit AoE4 Reminder",
-      click: () => app.quit(),
-    },
-  ]));
+  refreshTrayMenu();
   tray.on("click", toggleOverlayVisibility);
+}
+
+function createLockWindow() {
+  if (lockWindow) return;
+
+  lockWindow = new BrowserWindow({
+    width: scaledLockControlSize(),
+    height: scaledLockControlSize(),
+    transparent: true,
+    frame: false,
+    resizable: false,
+    focusable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    hasShadow: false,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  lockWindow.setAlwaysOnTop(true, "screen-saver");
+  lockWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  lockWindow.webContents.setZoomFactor(overlayScale());
+  lockWindow.loadFile(path.join(__dirname, "renderer", "lock-control.html"));
+  lockWindow.webContents.once("did-finish-load", syncLockWindow);
+  lockWindow.on("closed", () => {
+    lockWindow = undefined;
+  });
 }
 
 function launchCalibration() {
@@ -408,13 +571,13 @@ function launchCalibration() {
   child.once("exit", () => {
     calibrationProcess = undefined;
     restartMonitor();
-    overlayWindow?.showInactive();
+    showOverlay();
   });
 
   return new Promise((resolve) => {
     child.once("spawn", () => {
       child.unref();
-      overlayWindow?.hide();
+      hideOverlay();
       resolve({ started: true });
     });
     child.once("error", (error) => {
@@ -516,14 +679,14 @@ function restartMonitor() {
 function createWindow() {
   const position = savedPosition() || defaultPosition();
   overlayWindow = new BrowserWindow({
-    ...railSize,
+    ...scaledOverlaySize(),
     ...position,
     transparent: true,
     frame: false,
     resizable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    focusable: true,
+    focusable: !overlayInteractionLocked,
     hasShadow: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -534,14 +697,21 @@ function createWindow() {
 
   overlayWindow.setAlwaysOnTop(true, "screen-saver");
   overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  overlayWindow.webContents.setZoomFactor(1);
+  overlayWindow.setIgnoreMouseEvents(overlayInteractionLocked, { forward: true });
   overlayWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
-  overlayWindow.on("move", persistPosition);
+  overlayWindow.once("ready-to-show", syncLockWindow);
+  overlayWindow.on("move", () => {
+    persistPosition();
+    syncLockWindow();
+  });
 }
 
 app.whenReady().then(() => {
   ensureUserStorage();
   latestState = readState();
   captureSettings = readSettings();
+  overlayInteractionLocked = readInteractionLock();
   remindersPaused = readOverlayControls().paused === true;
   latestState = { ...latestState, remindersPaused };
   ipcMain.handle("overlay:bootstrap", () => ({
@@ -549,10 +719,11 @@ app.whenReady().then(() => {
     technologies: readCatalog(),
     villagerIconUrl: pathToFileURL(villagerIconPath).href,
     villagerAlertSounds: readVillagerAlertSounds(),
-    captureSettings,
+    captureSettings: captureSettingsForRenderer(),
     remindersPaused,
+    interactionLocked: overlayInteractionLocked,
   }));
-  ipcMain.handle("overlay:hide", () => overlayWindow?.hide());
+  ipcMain.handle("overlay:hide", hideOverlay);
   ipcMain.handle("overlay:close", () => app.quit());
   ipcMain.handle("overlay:set-capture-settings", (_event, settings) => {
     const previousMonitor = captureSettings.monitor;
@@ -568,13 +739,14 @@ app.whenReady().then(() => {
       "overlay",
       `capture settings monitor=${captureSettings.monitor} resolution=${captureSettings.resolution}`,
     );
+    applyOverlayScale();
     if (captureSettings.monitor !== previousMonitor && overlayWindow) {
       const position = defaultPosition();
       overlayWindow.setPosition(position.x, position.y);
       persistPosition();
     }
     restartMonitor();
-    return captureSettings;
+    return captureSettingsForRenderer();
   });
   ipcMain.handle("overlay:set-villager-sound-enabled", (_event, enabled) => {
     captureSettings = {
@@ -587,6 +759,11 @@ app.whenReady().then(() => {
       `villager alert sound ${captureSettings.villagerSoundEnabled ? "enabled" : "disabled"}`,
     );
     return captureSettings.villagerSoundEnabled;
+  });
+  ipcMain.handle("overlay:set-interaction-locked", (_event, locked) => {
+    const nextLocked = setOverlayInteractionLocked(locked);
+    appendDeveloperLog("overlay", `overlay controls ${nextLocked ? "locked" : "unlocked"}`);
+    return nextLocked;
   });
   ipcMain.handle("overlay:set-reminders-paused", (_event, paused) => {
     remindersPaused = Boolean(paused);
@@ -627,11 +804,27 @@ app.whenReady().then(() => {
   });
   ipcMain.handle("overlay:calibrate", launchCalibration);
   ipcMain.on("overlay:resize", (_event, height) => resizeOverlay(height));
+  ipcMain.on("overlay:lock-control-bounds", (_event, bounds) => {
+    const values = [bounds?.x, bounds?.y, bounds?.width, bounds?.height].map(Number);
+    if (!values.every(Number.isFinite) || values[2] <= 0 || values[3] <= 0) return;
+    lockControlBounds = {
+      x: values[0],
+      y: values[1],
+      width: values[2],
+      height: values[3],
+    };
+    syncLockWindow();
+  });
   createWindow();
+  createLockWindow();
   createTray();
   launchMonitor();
   fs.watchFile(runtimeStatePath, { interval: 500 }, sendState);
   globalShortcut.register("CommandOrControl+Alt+O", toggleOverlayVisibility);
+  globalShortcut.register("CommandOrControl+Alt+L", () => {
+    const nextLocked = setOverlayInteractionLocked(!overlayInteractionLocked);
+    appendDeveloperLog("overlay", `overlay controls ${nextLocked ? "locked" : "unlocked"}`);
+  });
 });
 
 app.on("before-quit", (event) => {
@@ -647,6 +840,8 @@ app.on("before-quit", (event) => {
     globalShortcut.unregisterAll();
     tray?.destroy();
     tray = undefined;
+    lockWindow?.destroy();
+    lockWindow = undefined;
     clearDebugEvents();
     app.quit();
   };

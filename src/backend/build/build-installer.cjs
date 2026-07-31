@@ -4,10 +4,12 @@ const path = require("node:path");
 
 const repositoryRoot = path.resolve(__dirname, "..", "..", "..");
 const frontendRoot = path.join(repositoryRoot, "src", "frontend");
-const packageJson = JSON.parse(
-  fs.readFileSync(path.join(frontendRoot, "package.json"), "utf8"),
+const releasePackageJson = JSON.parse(
+  fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"),
 );
-const outputDirectory = path.join(repositoryRoot, "release", packageJson.version);
+const releaseVersion = releasePackageJson.version;
+const outputDirectory = path.join(repositoryRoot, "release", releaseVersion);
+const frontendPackagePath = path.join(frontendRoot, "package.json");
 const electronBuilderCli = path.join(
   frontendRoot,
   "node_modules",
@@ -15,14 +17,32 @@ const electronBuilderCli = path.join(
   "cli.js",
 );
 
-const result = spawnSync(
-  process.execPath,
-  [electronBuilderCli, "--win", "nsis", `--config.directories.output=${outputDirectory}`],
-  {
-    cwd: frontendRoot,
-    stdio: "inherit",
-  },
-);
+const originalFrontendPackage = fs.readFileSync(frontendPackagePath, "utf8");
+const frontendPackage = JSON.parse(originalFrontendPackage);
+const frontendVersionChanged = frontendPackage.version !== releaseVersion;
+
+if (frontendVersionChanged) {
+  fs.writeFileSync(
+    frontendPackagePath,
+    `${JSON.stringify({ ...frontendPackage, version: releaseVersion }, null, 2)}\n`,
+  );
+}
+
+let result;
+try {
+  result = spawnSync(
+    process.execPath,
+    [electronBuilderCli, "--win", "nsis", `--config.directories.output=${outputDirectory}`],
+    {
+      cwd: frontendRoot,
+      stdio: "inherit",
+    },
+  );
+} finally {
+  if (frontendVersionChanged) {
+    fs.writeFileSync(frontendPackagePath, originalFrontendPackage);
+  }
+}
 
 if (result.error) throw result.error;
 process.exit(result.status ?? 1);

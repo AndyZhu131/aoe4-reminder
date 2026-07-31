@@ -1,4 +1,5 @@
 :root {
+  --overlay-scale: 1;
   color: #f4f7fa;
   font-family: Arial, sans-serif;
 }
@@ -8,13 +9,22 @@
 }
 
 html,
-body,
-#overlay {
+body {
   width: 100%;
   height: 100%;
   margin: 0;
   overflow: hidden;
   background: transparent;
+}
+
+#overlay {
+  width: 720px;
+  height: calc(100% / var(--overlay-scale));
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  transform: scale(var(--overlay-scale));
+  transform-origin: top left;
 }
 
 .overlay {
@@ -80,6 +90,18 @@ body,
 
 #settings-button {
   font-size: 17px;
+}
+
+.interaction-lock-button {
+  color: #ffcc78;
+  font-size: 16px;
+}
+
+.overlay--interaction-locked .icon-button:not(.interaction-lock-button),
+.overlay--interaction-locked .reminder-actions,
+.overlay--interaction-locked .villager-sound-toggle {
+  cursor: default;
+  opacity: 0.42;
 }
 
 .icon-button:hover,
