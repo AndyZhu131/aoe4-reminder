@@ -19,6 +19,11 @@ let captureSettings = { resolution: "2560x1440", monitor: 1 };
 let resetPending = false;
 let interactionLocked = true;
 
+function applyOverlayScale() {
+  const scale = Number(captureSettings.overlayScale) || 1;
+  document.documentElement.style.setProperty("--overlay-scale", String(scale));
+}
+
 function ageTier(age) {
   const match = /^age_([1-4])$/.exec(age || "");
   return match ? Number(match[1]) : 0;
@@ -151,6 +156,7 @@ function renderTechnology(technology, detected, locked) {
 
 function render() {
   const overlay = document.getElementById("overlay");
+  applyOverlayScale();
   const researched = new Set(state.researchedTechnologies || []);
   const detected = new Set(state.detectedTechnologies || []);
   const lockedTechnologies = new Set(state.lockedTechnologies || []);
@@ -311,6 +317,14 @@ function render() {
 
   requestAnimationFrame(() => {
     const rail = overlay.querySelector(".rail");
+    const lockButton = document.getElementById("interaction-lock-button");
+    const lockBounds = lockButton.getBoundingClientRect();
+    window.aoeOverlay.setLockControlBounds({
+      x: lockBounds.x,
+      y: lockBounds.y,
+      width: lockBounds.width,
+      height: lockBounds.height,
+    });
     window.aoeOverlay.resize(rail.scrollHeight + 16);
   });
   syncVillagerAlertSound();

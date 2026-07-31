@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("aoeOverlay", {
   resetPosition: () => ipcRenderer.invoke("overlay:reset-position"),
   calibrate: () => ipcRenderer.invoke("overlay:calibrate"),
   resize: (height) => ipcRenderer.send("overlay:resize", height),
+  setLockControlBounds: (bounds) => ipcRenderer.send("overlay:lock-control-bounds", bounds),
   onState: (callback) => ipcRenderer.on("overlay:state", (_event, state) => callback(state)),
   onPaused: (callback) =>
     ipcRenderer.on("overlay:paused", (_event, paused) => callback(paused)),

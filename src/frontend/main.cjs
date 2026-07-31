@@ -63,6 +63,7 @@ const startingLockedTechnologies = [
 
 let overlayWindow;
 let lockWindow;
+let lockControlBounds;
 let tray;
 let latestState;
 let remindersPaused = false;
@@ -290,6 +291,13 @@ function overlayScale() {
   return resolutionMultiplier();
 }
 
+function captureSettingsForRenderer() {
+  return {
+    ...captureSettings,
+    overlayScale: overlayScale(),
+  };
+}
+
 function scaledOverlaySize(height = railSize.height) {
   const scale = overlayScale();
   return {
@@ -392,9 +400,10 @@ function resizeOverlay(requestedHeight) {
 }
 
 function applyOverlayScale() {
+  lockControlBounds = undefined;
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     const { width, height } = scaledOverlaySize();
-    overlayWindow.webContents.setZoomFactor(overlayScale());
+    overlayWindow.webContents.setZoomFactor(1);
     overlayWindow.setSize(width, height);
   }
   if (lockWindow && !lockWindow.isDestroyed()) {
@@ -437,13 +446,23 @@ function syncLockWindow() {
     return;
   }
 
-  const bounds = overlayWindow.getBounds();
+  const bounds = overlayWindow.getContentBounds();
   const scale = overlayScale();
-  lockWindow.setPosition(
-    bounds.x + bounds.width - Math.round(37 * scale),
-    bounds.y + Math.round(10 * scale),
-  );
+  const control = lockControlBounds || {
+    x: bounds.width - Math.round(37 * scale),
+    y: Math.round(10 * scale),
+    width: scaledLockControlSize(),
+    height: scaledLockControlSize(),
+  };
+  lockWindow.setBounds({
+    x: bounds.x + Math.round(control.x),
+    y: bounds.y + Math.round(control.y),
+    width: Math.max(1, Math.round(control.width)),
+    height: Math.max(1, Math.round(control.height)),
+  });
+  lockWindow.setIgnoreMouseEvents(false);
   lockWindow.showInactive();
+  lockWindow.moveTop();
 }
 
 function refreshTrayMenu() {
@@ -678,7 +697,7 @@ function createWindow() {
 
   overlayWindow.setAlwaysOnTop(true, "screen-saver");
   overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  overlayWindow.webContents.setZoomFactor(overlayScale());
+  overlayWindow.webContents.setZoomFactor(1);
   overlayWindow.setIgnoreMouseEvents(overlayInteractionLocked, { forward: true });
   overlayWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
   overlayWindow.once("ready-to-show", syncLockWindow);
@@ -700,7 +719,7 @@ app.whenReady().then(() => {
     technologies: readCatalog(),
     villagerIconUrl: pathToFileURL(villagerIconPath).href,
     villagerAlertSounds: readVillagerAlertSounds(),
-    captureSettings,
+    captureSettings: captureSettingsForRenderer(),
     remindersPaused,
     interactionLocked: overlayInteractionLocked,
   }));
@@ -727,7 +746,7 @@ app.whenReady().then(() => {
       persistPosition();
     }
     restartMonitor();
-    return captureSettings;
+    return captureSettingsForRenderer();
   });
   ipcMain.handle("overlay:set-villager-sound-enabled", (_event, enabled) => {
     captureSettings = {
@@ -785,6 +804,17 @@ app.whenReady().then(() => {
   });
   ipcMain.handle("overlay:calibrate", launchCalibration);
   ipcMain.on("overlay:resize", (_event, height) => resizeOverlay(height));
+  ipcMain.on("overlay:lock-control-bounds", (_event, bounds) => {
+    const values = [bounds?.x, bounds?.y, bounds?.width, bounds?.height].map(Number);
+    if (!values.every(Number.isFinite) || values[2] <= 0 || values[3] <= 0) return;
+    lockControlBounds = {
+      x: values[0],
+      y: values[1],
+      width: values[2],
+      height: values[3],
+    };
+    syncLockWindow();
+  });
   createWindow();
   createLockWindow();
   createTray();

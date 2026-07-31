@@ -22,7 +22,8 @@ npm.cmd run dist
 The command creates a private `.venv-build` environment, freezes the backend
 into `dist/backend/aoe4-assistant/`, then produces the NSIS installer under a
 versioned directory such as `release/1.0.0/`. The directory is derived from
-`src/frontend/package.json`.
+the `version` field in the root `package.json`. Update that one field before
+each release; the build injects it into the packaged Electron application.
 
 Runtime dependencies are listed in `src/requirements.txt`; release-only build
 dependencies are in `src/requirements-build.txt`.
