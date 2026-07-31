@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("aoeOverlay", {
   close: () => ipcRenderer.invoke("overlay:close"),
   setCaptureSettings: (settings) => ipcRenderer.invoke("overlay:set-capture-settings", settings),
   setVillagerSoundEnabled: (enabled) => ipcRenderer.invoke("overlay:set-villager-sound-enabled", enabled),
+  setInteractionLocked: (locked) => ipcRenderer.invoke("overlay:set-interaction-locked", locked),
   setRemindersPaused: (paused) => ipcRenderer.invoke("overlay:set-reminders-paused", paused),
   resetReminders: () => ipcRenderer.invoke("overlay:reset-reminders"),
   openDeveloperConsole: () => ipcRenderer.invoke("developer-console:open"),
@@ -16,6 +17,8 @@ contextBridge.exposeInMainWorld("aoeOverlay", {
   onState: (callback) => ipcRenderer.on("overlay:state", (_event, state) => callback(state)),
   onPaused: (callback) =>
     ipcRenderer.on("overlay:paused", (_event, paused) => callback(paused)),
+  onInteractionLocked: (callback) =>
+    ipcRenderer.on("overlay:interaction-locked", (_event, locked) => callback(locked)),
   onDeveloperConsoleLog: (callback) =>
     ipcRenderer.on("developer-console:log", (_event, entry) => callback(entry)),
 });

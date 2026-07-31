@@ -17,6 +17,7 @@ let settingsOpen = false;
 let timerAnchor;
 let captureSettings = { resolution: "2560x1440", monitor: 1 };
 let resetPending = false;
+let interactionLocked = true;
 
 function ageTier(age) {
   const match = /^age_([1-4])$/.exec(age || "");
@@ -180,6 +181,7 @@ function render() {
     <div class="rail">
       <div class="overlay-controls">
         <div class="drag-area" title="Drag to move"></div>
+        <button class="icon-button interaction-lock-button" id="interaction-lock-button" type="button" title="${interactionLocked ? "Overlay is click-through. Press Ctrl+Alt+L to unlock." : "Lock overlay controls (Ctrl+Alt+L)"}" aria-label="${interactionLocked ? "Unlock overlay controls" : "Lock overlay controls"}" aria-pressed="${interactionLocked}">${interactionLocked ? "&#128274;" : "&#128275;"}</button>
         <button class="icon-button" id="settings-button" type="button" title="Settings" aria-label="Settings">&#9881;</button>
         <button class="icon-button" id="hide-button" type="button" title="Hide overlay" aria-label="Hide overlay">&minus;</button>
         <button class="icon-button" id="close-button" type="button" title="Close overlay" aria-label="Close overlay">&times;</button>
@@ -247,6 +249,10 @@ function render() {
 
   document.getElementById("settings-button").addEventListener("click", () => {
     settingsOpen = !settingsOpen;
+    render();
+  });
+  document.getElementById("interaction-lock-button").addEventListener("click", async () => {
+    interactionLocked = await window.aoeOverlay.setInteractionLocked(!interactionLocked);
     render();
   });
   document.getElementById("hide-button").addEventListener("click", () => window.aoeOverlay.hide());
@@ -318,6 +324,7 @@ async function start() {
   captureSettings = bootstrap.captureSettings;
   villagerSoundEnabled = captureSettings.villagerSoundEnabled !== false;
   remindersPaused = bootstrap.remindersPaused;
+  interactionLocked = bootstrap.interactionLocked === true;
   render();
 
   window.aoeOverlay.onState((nextState) => {
@@ -332,6 +339,10 @@ async function start() {
   window.aoeOverlay.onPaused((paused) => {
     remindersPaused = paused;
     state = { ...state, remindersPaused };
+    render();
+  });
+  window.aoeOverlay.onInteractionLocked((locked) => {
+    interactionLocked = locked;
     render();
   });
 }

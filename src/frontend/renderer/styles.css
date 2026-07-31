@@ -82,6 +82,11 @@ body,
   font-size: 17px;
 }
 
+.interaction-lock-button {
+  color: #ffcc78;
+  font-size: 16px;
+}
+
 .icon-button:hover,
 .icon-button:focus-visible {
   background: rgba(101, 210, 215, 0.2);

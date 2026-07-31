@@ -64,6 +64,7 @@ let overlayWindow;
 let tray;
 let latestState;
 let remindersPaused = false;
+let overlayInteractionLocked = true;
 let captureSettings = {
   resolution: "2560x1440",
   monitor: 1,
@@ -260,6 +261,25 @@ function persistSettings() {
   );
 }
 
+function interactionSettingsPath() {
+  return path.join(app.getPath("userData"), "overlay-interaction.json");
+}
+
+function readInteractionLock() {
+  try {
+    return readJson(interactionSettingsPath()).locked !== false;
+  } catch {
+    return true;
+  }
+}
+
+function persistInteractionLock() {
+  fs.writeFileSync(
+    interactionSettingsPath(),
+    JSON.stringify({ locked: overlayInteractionLocked }, null, 2),
+  );
+}
+
 function resolutionMultiplier(resolution = captureSettings.resolution) {
   return resolutionProfiles[resolution]?.multiplier || 1;
 }
@@ -348,6 +368,7 @@ function resizeOverlay(requestedHeight) {
 }
 
 function toggleOverlayVisibility() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
   if (overlayWindow.isVisible()) {
     overlayWindow.hide();
   } else {
@@ -355,12 +376,9 @@ function toggleOverlayVisibility() {
   }
 }
 
-function createTray() {
-  if (tray) return;
-
-  const icon = nativeImage.createFromPath(villagerIconPath).resize({ width: 32, height: 32 });
-  tray = new Tray(icon);
-  tray.setToolTip("AoE4 Reminder");
+function refreshTrayMenu() {
+  if (!tray) return;
+  const locked = overlayInteractionLocked;
   tray.setContextMenu(Menu.buildFromTemplate([
     {
       label: "Show overlay",
@@ -370,12 +388,37 @@ function createTray() {
       label: "Hide overlay",
       click: () => overlayWindow?.hide(),
     },
+    {
+      label: locked ? "Unlock overlay controls (Ctrl+Alt+L)" : "Lock overlay controls (Ctrl+Alt+L)",
+      click: () => setOverlayInteractionLocked(!locked),
+    },
     { type: "separator" },
     {
       label: "Quit AoE4 Reminder",
       click: () => app.quit(),
     },
   ]));
+}
+
+function setOverlayInteractionLocked(locked, { persist = true } = {}) {
+  overlayInteractionLocked = Boolean(locked);
+  if (persist) persistInteractionLock();
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.setIgnoreMouseEvents(overlayInteractionLocked, { forward: true });
+    overlayWindow.setFocusable(!overlayInteractionLocked);
+    overlayWindow.webContents.send("overlay:interaction-locked", overlayInteractionLocked);
+  }
+  refreshTrayMenu();
+  return overlayInteractionLocked;
+}
+
+function createTray() {
+  if (tray) return;
+
+  const icon = nativeImage.createFromPath(villagerIconPath).resize({ width: 32, height: 32 });
+  tray = new Tray(icon);
+  tray.setToolTip("AoE4 Reminder");
+  refreshTrayMenu();
   tray.on("click", toggleOverlayVisibility);
 }
 
@@ -523,7 +566,7 @@ function createWindow() {
     resizable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    focusable: true,
+    focusable: !overlayInteractionLocked,
     hasShadow: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -534,6 +577,7 @@ function createWindow() {
 
   overlayWindow.setAlwaysOnTop(true, "screen-saver");
   overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  overlayWindow.setIgnoreMouseEvents(overlayInteractionLocked, { forward: true });
   overlayWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
   overlayWindow.on("move", persistPosition);
 }
@@ -542,6 +586,7 @@ app.whenReady().then(() => {
   ensureUserStorage();
   latestState = readState();
   captureSettings = readSettings();
+  overlayInteractionLocked = readInteractionLock();
   remindersPaused = readOverlayControls().paused === true;
   latestState = { ...latestState, remindersPaused };
   ipcMain.handle("overlay:bootstrap", () => ({
@@ -551,6 +596,7 @@ app.whenReady().then(() => {
     villagerAlertSounds: readVillagerAlertSounds(),
     captureSettings,
     remindersPaused,
+    interactionLocked: overlayInteractionLocked,
   }));
   ipcMain.handle("overlay:hide", () => overlayWindow?.hide());
   ipcMain.handle("overlay:close", () => app.quit());
@@ -587,6 +633,11 @@ app.whenReady().then(() => {
       `villager alert sound ${captureSettings.villagerSoundEnabled ? "enabled" : "disabled"}`,
     );
     return captureSettings.villagerSoundEnabled;
+  });
+  ipcMain.handle("overlay:set-interaction-locked", (_event, locked) => {
+    const nextLocked = setOverlayInteractionLocked(locked);
+    appendDeveloperLog("overlay", `overlay controls ${nextLocked ? "locked" : "unlocked"}`);
+    return nextLocked;
   });
   ipcMain.handle("overlay:set-reminders-paused", (_event, paused) => {
     remindersPaused = Boolean(paused);
@@ -632,6 +683,10 @@ app.whenReady().then(() => {
   launchMonitor();
   fs.watchFile(runtimeStatePath, { interval: 500 }, sendState);
   globalShortcut.register("CommandOrControl+Alt+O", toggleOverlayVisibility);
+  globalShortcut.register("CommandOrControl+Alt+L", () => {
+    const nextLocked = setOverlayInteractionLocked(!overlayInteractionLocked);
+    appendDeveloperLog("overlay", `overlay controls ${nextLocked ? "locked" : "unlocked"}`);
+  });
 });
 
 app.on("before-quit", (event) => {
