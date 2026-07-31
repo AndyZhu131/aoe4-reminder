@@ -42,6 +42,7 @@ const calibrationPaths = {
 const villagerIconPath = path.join(templateAssetsRoot, "queue", "villager.png");
 const villagerSoundDirectory = path.join(staticAssetsRoot, "sound", "villager_mc");
 const railSize = { width: 720, height: 178 };
+const lockControlSize = 29;
 const overlayLayout = "horizontal-two-row-calibrated-top";
 const resolutionProfiles = readJson(resolutionProfilesPath);
 const templateResolutions = new Set(Object.keys(resolutionProfiles));
@@ -285,6 +286,22 @@ function resolutionMultiplier(resolution = captureSettings.resolution) {
   return resolutionProfiles[resolution]?.multiplier || 1;
 }
 
+function overlayScale() {
+  return resolutionMultiplier();
+}
+
+function scaledOverlaySize(height = railSize.height) {
+  const scale = overlayScale();
+  return {
+    width: Math.round(railSize.width * scale),
+    height: Math.round(height * scale),
+  };
+}
+
+function scaledLockControlSize() {
+  return Math.round(lockControlSize * overlayScale());
+}
+
 function scaleCalibrationPixels(value, resolution = captureSettings.resolution) {
   return Math.round(value * resolutionMultiplier(resolution));
 }
@@ -325,22 +342,23 @@ function calibratedAgeTimerRegion() {
   }
 }
 
-function defaultPosition(height = railSize.height) {
+function defaultPosition(height = scaledOverlaySize().height) {
   const workArea = selectedDisplay().workArea;
   const region = calibratedAgeTimerRegion();
+  const { width } = scaledOverlaySize();
   if (region) {
     const display = screen.getDisplayNearestPoint({ x: region.x, y: region.y }).workArea;
     const desired = { x: region.x + region.width + 20, y: display.y + 1 };
     return {
       x: Math.max(
         display.x + 8,
-        Math.min(desired.x, display.x + display.width - railSize.width - 8),
+        Math.min(desired.x, display.x + display.width - width - 8),
       ),
       y: desired.y,
     };
   }
   return {
-    x: workArea.x + Math.max(8, Math.round((workArea.width - railSize.width) / 2)),
+    x: workArea.x + Math.max(8, Math.round((workArea.width - width) / 2)),
     y: workArea.y + Math.max(8, workArea.height - height - 28),
   };
 }
@@ -364,8 +382,27 @@ function resizeOverlay(requestedHeight) {
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
   const display = screen.getDisplayMatching(overlayWindow.getBounds());
   const maxHeight = Math.max(96, display.workArea.height - 16);
-  const height = Math.max(42, Math.min(Math.round(requestedHeight), maxHeight));
-  overlayWindow.setSize(railSize.width, height);
+  const { width } = scaledOverlaySize();
+  const height = Math.max(
+    Math.round(42 * overlayScale()),
+    Math.min(Math.round(requestedHeight * overlayScale()), maxHeight),
+  );
+  overlayWindow.setSize(width, height);
+  syncLockWindow();
+}
+
+function applyOverlayScale() {
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    const { width, height } = scaledOverlaySize();
+    overlayWindow.webContents.setZoomFactor(overlayScale());
+    overlayWindow.setSize(width, height);
+  }
+  if (lockWindow && !lockWindow.isDestroyed()) {
+    const size = scaledLockControlSize();
+    lockWindow.webContents.setZoomFactor(overlayScale());
+    lockWindow.setSize(size, size);
+  }
+  syncLockWindow();
 }
 
 function toggleOverlayVisibility() {
@@ -401,7 +438,11 @@ function syncLockWindow() {
   }
 
   const bounds = overlayWindow.getBounds();
-  lockWindow.setPosition(bounds.x + bounds.width - 37, bounds.y + 10);
+  const scale = overlayScale();
+  lockWindow.setPosition(
+    bounds.x + bounds.width - Math.round(37 * scale),
+    bounds.y + Math.round(10 * scale),
+  );
   lockWindow.showInactive();
 }
 
@@ -456,8 +497,8 @@ function createLockWindow() {
   if (lockWindow) return;
 
   lockWindow = new BrowserWindow({
-    width: 29,
-    height: 29,
+    width: scaledLockControlSize(),
+    height: scaledLockControlSize(),
     transparent: true,
     frame: false,
     resizable: false,
@@ -474,6 +515,7 @@ function createLockWindow() {
   });
   lockWindow.setAlwaysOnTop(true, "screen-saver");
   lockWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  lockWindow.webContents.setZoomFactor(overlayScale());
   lockWindow.loadFile(path.join(__dirname, "renderer", "lock-control.html"));
   lockWindow.webContents.once("did-finish-load", syncLockWindow);
   lockWindow.on("closed", () => {
@@ -618,7 +660,7 @@ function restartMonitor() {
 function createWindow() {
   const position = savedPosition() || defaultPosition();
   overlayWindow = new BrowserWindow({
-    ...railSize,
+    ...scaledOverlaySize(),
     ...position,
     transparent: true,
     frame: false,
@@ -636,6 +678,7 @@ function createWindow() {
 
   overlayWindow.setAlwaysOnTop(true, "screen-saver");
   overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  overlayWindow.webContents.setZoomFactor(overlayScale());
   overlayWindow.setIgnoreMouseEvents(overlayInteractionLocked, { forward: true });
   overlayWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
   overlayWindow.once("ready-to-show", syncLockWindow);
@@ -677,6 +720,7 @@ app.whenReady().then(() => {
       "overlay",
       `capture settings monitor=${captureSettings.monitor} resolution=${captureSettings.resolution}`,
     );
+    applyOverlayScale();
     if (captureSettings.monitor !== previousMonitor && overlayWindow) {
       const position = defaultPosition();
       overlayWindow.setPosition(position.x, position.y);

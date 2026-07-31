@@ -91,7 +91,8 @@ overlay starts locked and click-through so it cannot take focus from the game.
 Press `Ctrl+Alt+L` or use the system-tray menu to unlock its controls; lock it
 again with the top-right lock button after making adjustments. The
 1920x1080 and 3840x2160 calibration profiles are scaled from the 2560x1440
-reference calibration and rebased to the selected monitor. That action launches
+reference calibration and rebased to the selected monitor. The overlay itself
+also scales to the selected resolution profile. That action launches
 the existing calibration workflow after hiding the rail. `-` hides the rail and
 `Ctrl+Alt+O` restores it. The `x` button closes the overlay process.
 
