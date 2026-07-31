@@ -17,6 +17,7 @@ let settingsOpen = false;
 let timerAnchor;
 let captureSettings = { resolution: "2560x1440", monitor: 1 };
 let resetPending = false;
+let resetFallbackTimer;
 let interactionLocked = true;
 
 function applyOverlayScale() {
@@ -75,6 +76,27 @@ function apmLabel() {
 
 function reminderControlsReady() {
   return !resetPending;
+}
+
+function clearResetFallback() {
+  if (!resetFallbackTimer) return;
+  clearTimeout(resetFallbackTimer);
+  resetFallbackTimer = undefined;
+}
+
+function finishResetPending() {
+  clearResetFallback();
+  resetPending = false;
+}
+
+function scheduleResetFallback() {
+  clearResetFallback();
+  resetFallbackTimer = setTimeout(() => {
+    if (!resetPending) return;
+    console.warn("[overlay] reset confirmation timed out; controls re-enabled");
+    finishResetPending();
+    render();
+  }, 8000);
 }
 
 function shuffleSounds(sounds) {
@@ -218,8 +240,8 @@ function render() {
       <div class="reminder-content">
         <aside class="status-panel">
           <div class="session-status">
-            <time class="game-timer" title="Game timer">${timerLabel()}</time>
             <div class="age-marker" title="Current age"><span>Age</span><strong>${ageLabel(state.age)}</strong></div>
+            <time class="game-timer" title="Game timer">${timerLabel()}</time>
           </div>
           <div class="apm-tracker" title="Actions per minute"><span>APM</span><strong>${apmLabel()}</strong></div>
           <div class="reminder-actions">
@@ -276,11 +298,19 @@ function render() {
     if (!reminderControlsReady()) return;
     event.currentTarget.disabled = true;
     resetPending = true;
-    remindersPaused = await window.aoeOverlay.resetReminders();
-    state = { ...state, remindersPaused };
-    syncTimerAnchor(state);
-    console.info("[overlay] reminder session reset requested");
     render();
+    scheduleResetFallback();
+    try {
+      remindersPaused = await window.aoeOverlay.resetReminders();
+      state = { ...state, remindersPaused };
+      syncTimerAnchor(state);
+      console.info("[overlay] reminder session reset requested");
+      render();
+    } catch (error) {
+      console.error("[overlay] reminder session reset failed", error);
+      finishResetPending();
+      render();
+    }
   });
   document.getElementById("villager-sound-toggle").addEventListener("change", async (event) => {
     villagerSoundEnabled = await window.aoeOverlay.setVillagerSoundEnabled(
@@ -348,7 +378,7 @@ async function start() {
     syncTimerAnchor(state);
     remindersPaused = nextState.remindersPaused ?? remindersPaused;
     if (resetPending && nextState.session?.resetReady) {
-      resetPending = false;
+      finishResetPending();
     }
     render();
   });

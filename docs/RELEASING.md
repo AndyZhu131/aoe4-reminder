@@ -25,6 +25,10 @@ versioned directory such as `release/1.0.0/`. The directory is derived from
 the `version` field in the root `package.json`. Update that one field before
 each release; the build injects it into the packaged Electron application.
 
+Code signing is controlled by `release.codeSigning` in the root `package.json`.
+It is currently `false`. When enabled, the build requires valid Electron Builder
+Windows signing credentials and fails instead of producing an unsigned release.
+
 Runtime dependencies are listed in `src/requirements.txt`; release-only build
 dependencies are in `src/requirements-build.txt`.
 

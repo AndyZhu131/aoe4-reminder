@@ -14,14 +14,14 @@ from backend.shared.common import (
     wait_before_capture,
 )
 from .resources import read_text_with_tesseract
-from backend.shared.paths import bundled_path
+from backend.shared.paths import source_path
 
 
 AGE_READER = "fixed-position-roman-template"
 # Fractions of the captured age/timer region, not fixed screen pixels.
 AGE_ROMAN_RECT = (38 / 125, 40 / 288, 50 / 125, 58 / 288)
 CALIBRATED_AGE_ROMAN_RECT = (52 / 155, 0.0, 70 / 155, 38 / 146)
-AGE_TEMPLATE_DIR = bundled_path("templates", "age")
+AGE_TEMPLATE_DIR = source_path("templates", "age")
 AGE_TEMPLATE_THRESHOLD = 0.18
 TIMER_RECTS = (
     ("standard", (32 / 125, 142 / 288, 64 / 125, 28 / 288)),
@@ -329,7 +329,7 @@ def preprocess_timer_area(frame, scale, minimum_value):
 
 
 def parse_timer(raw_text):
-    match = re.search(r"(\d{1,3})\s*:\s*(\d{2})", raw_text)
+    match = re.fullmatch(r"\s*(\d{2})\s*:\s*(\d{2})\s*", raw_text)
     if not match:
         return None
     minutes = int(match.group(1))

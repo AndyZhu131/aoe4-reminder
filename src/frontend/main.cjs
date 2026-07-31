@@ -102,12 +102,16 @@ function backendInvocation(argumentsList) {
   };
 }
 
-function packagedTesseractCommand() {
-  if (!app.isPackaged) return [];
-  return [
-    "--tesseract-cmd",
-    path.join(process.resourcesPath, "backend", "_internal", "tesseract", "tesseract.exe"),
-  ];
+function tesseractCommand() {
+  const candidates = app.isPackaged
+    ? [path.join(process.resourcesPath, "backend", "_internal", "tesseract", "tesseract.exe")]
+    : [
+      process.env.AOE4_TESSERACT_CMD,
+      path.join(process.env.ProgramFiles || "C:\\Program Files", "Tesseract-OCR", "tesseract.exe"),
+      path.join(process.env.LOCALAPPDATA || "", "Tesseract-OCR", "tesseract.exe"),
+    ];
+  const executable = candidates.find((candidate) => candidate && fs.existsSync(candidate));
+  return executable ? ["--tesseract-cmd", executable] : [];
 }
 
 function ensureUserStorage() {
@@ -126,6 +130,11 @@ function ensureUserStorage() {
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
+
+function applicationVersion() {
+  if (app.isPackaged) return app.getVersion();
+  return readJson(path.join(repositoryRoot, "package.json")).version;
 }
 
 function defaultState() {
@@ -616,6 +625,7 @@ function openDeveloperConsole() {
 function launchMonitor() {
   if (monitorProcess) return;
 
+  const tesseractArguments = tesseractCommand();
   const backend = backendInvocation([
     "watch-monitor",
     "--monitor",
@@ -635,7 +645,7 @@ function launchMonitor() {
     "--debug-events",
     "--debug-event-dir",
     debugEventsPath,
-    ...packagedTesseractCommand(),
+    ...tesseractArguments,
   ]);
   const child = spawn(backend.command, backend.arguments, {
     cwd: backend.cwd,
@@ -645,7 +655,7 @@ function launchMonitor() {
   monitorProcess = child;
   appendDeveloperLog(
     "monitor",
-    `starting (monitor=${captureSettings.monitor}, resolution=${captureSettings.resolution})`,
+    `starting (monitor=${captureSettings.monitor}, resolution=${captureSettings.resolution}, ocr=${tesseractArguments[1] || "PATH"})`,
   );
 
   child.stdout.on("data", (data) => {
@@ -714,6 +724,9 @@ app.whenReady().then(() => {
   overlayInteractionLocked = readInteractionLock();
   remindersPaused = readOverlayControls().paused === true;
   latestState = { ...latestState, remindersPaused };
+  const startupMessage = `AoE4 Reminder v${applicationVersion()} starting (${app.isPackaged ? "installed" : "development"})`;
+  console.log(`[aoe4-reminder] ${startupMessage}`);
+  appendDeveloperLog("app", startupMessage);
   ipcMain.handle("overlay:bootstrap", () => ({
     state: latestState,
     technologies: readCatalog(),
@@ -778,7 +791,6 @@ app.whenReady().then(() => {
     return remindersPaused;
   });
   ipcMain.handle("overlay:reset-reminders", () => {
-    const clearedDebugEvents = clearDebugEvents();
     remindersPaused = true;
     writeOverlayControls({
       paused: true,
@@ -787,7 +799,7 @@ app.whenReady().then(() => {
     latestState = { ...defaultState(), remindersPaused };
     appendDeveloperLog(
       "overlay",
-      `reminder session reset requested and paused; debug events cleared=${clearedDebugEvents ?? "failed"}`,
+      "reminder session reset requested and paused; monitor cleanup pending",
     );
     overlayWindow?.webContents.send("overlay:state", latestState);
     overlayWindow?.webContents.send("overlay:paused", remindersPaused);
