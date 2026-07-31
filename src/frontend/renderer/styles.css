@@ -87,6 +87,13 @@ body,
   font-size: 16px;
 }
 
+.overlay--interaction-locked .icon-button:not(.interaction-lock-button),
+.overlay--interaction-locked .reminder-actions,
+.overlay--interaction-locked .villager-sound-toggle {
+  cursor: default;
+  opacity: 0.42;
+}
+
 .icon-button:hover,
 .icon-button:focus-visible {
   background: rgba(101, 210, 215, 0.2);
