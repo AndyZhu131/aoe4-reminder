@@ -8,7 +8,13 @@
   </head>
   <body>
     <main>
-      <header>Developer Console</header>
+      <header>
+        <span>Developer Console</span>
+        <div class="log-levels" role="group" aria-label="Log level">
+          <button class="log-level is-active" type="button" data-level="info">Info</button>
+          <button class="log-level" type="button" data-level="debug">Debug</button>
+        </div>
+      </header>
       <pre id="log" aria-live="polite"></pre>
     </main>
     <script src="developer-console.js"></script>

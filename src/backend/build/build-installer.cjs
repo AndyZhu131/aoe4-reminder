@@ -8,6 +8,7 @@ const releasePackageJson = JSON.parse(
   fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"),
 );
 const releaseVersion = releasePackageJson.version;
+const codeSigningEnabled = releasePackageJson.release?.codeSigning === true;
 const outputDirectory = path.join(repositoryRoot, "release", releaseVersion);
 const frontendPackagePath = path.join(frontendRoot, "package.json");
 const electronBuilderCli = path.join(
@@ -30,9 +31,21 @@ if (frontendVersionChanged) {
 
 let result;
 try {
+  const builderArgs = [
+    electronBuilderCli,
+    "--win",
+    "nsis",
+    `--config.directories.output=${outputDirectory}`,
+  ];
+  if (codeSigningEnabled) {
+    builderArgs.push(
+      "--config.win.signAndEditExecutable=true",
+      "--config.forceCodeSigning=true",
+    );
+  }
   result = spawnSync(
     process.execPath,
-    [electronBuilderCli, "--win", "nsis", `--config.directories.output=${outputDirectory}`],
+    builderArgs,
     {
       cwd: frontendRoot,
       stdio: "inherit",

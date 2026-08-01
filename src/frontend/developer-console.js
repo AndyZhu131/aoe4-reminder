@@ -1,4 +1,7 @@
 const log = document.getElementById("log");
+const levelButtons = [...document.querySelectorAll(".log-level")];
+let activeLevel = "info";
+let entries = [];
 
 function appendText(parent, value, className) {
   const element = document.createElement("span");
@@ -27,6 +30,12 @@ function formatEntry(entry) {
     return line;
   }
 
+  if (entry.message.startsWith("TIME:")) {
+    line.classList.add("log-line--timer");
+    appendText(line, entry.message);
+    return line;
+  }
+
   if (entry.message.startsWith("VILLAGER_REMINDER: fired")) {
     line.classList.add("log-line--villager-alert");
     appendText(line, "VILLAGER REMINDER FIRED: no villager detected", "log-event");
@@ -35,18 +44,45 @@ function formatEntry(entry) {
     return line;
   }
 
+  if (entry.message.startsWith("ERROR:")) {
+    line.classList.add("log-line--error");
+    appendText(line, entry.message, "log-event");
+    return line;
+  }
+
   appendText(line, entry.message);
   return line;
 }
 
-function append(entry) {
-  log.append(formatEntry(entry));
+function render() {
+  log.replaceChildren();
+  entries
+    .filter((entry) => (entry.level || "info") === activeLevel)
+    .forEach((entry) => log.append(formatEntry(entry)));
   log.scrollTop = log.scrollHeight;
 }
 
+function append(entry) {
+  entries.push(entry);
+  if ((entry.level || "info") === activeLevel) {
+    log.append(formatEntry(entry));
+    log.scrollTop = log.scrollHeight;
+  }
+}
+
+for (const button of levelButtons) {
+  button.addEventListener("click", () => {
+    activeLevel = button.dataset.level;
+    levelButtons.forEach((candidate) => {
+      candidate.classList.toggle("is-active", candidate === button);
+    });
+    render();
+  });
+}
+
 async function start() {
-  const entries = await window.aoeOverlay.developerConsoleBootstrap();
-  entries.forEach(append);
+  const bootstrapEntries = await window.aoeOverlay.developerConsoleBootstrap();
+  bootstrapEntries.forEach(append);
   window.aoeOverlay.onDeveloperConsoleLog(append);
 }
 

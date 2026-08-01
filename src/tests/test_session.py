@@ -24,7 +24,7 @@ from backend.runtime.monitor import (
 from backend.shared.common import load_region
 from backend.app.cli import build_parser
 from backend.recognition.villager import queue_geometry
-from backend.recognition.ageAndTimer import age_capture_layout, resolve_age_timer_rect
+from backend.recognition.ageAndTimer import age_capture_layout, parse_timer, resolve_age_timer_rect
 from backend.runtime.apm import ActionPerMinuteTracker
 from backend.recognition.tech import (
     DEFAULT_TECH_CATALOG,
@@ -123,6 +123,14 @@ class CalibrationProfileTests(unittest.TestCase):
 
 
 class TimerSynchronizerTests(unittest.TestCase):
+    def test_timer_parser_requires_two_digits_for_minutes_and_seconds(self):
+        self.assertEqual(parse_timer("00:01"), "00:01")
+        self.assertEqual(parse_timer(" 99 : 59\n"), "99:59")
+        self.assertIsNone(parse_timer("500:01"))
+        self.assertIsNone(parse_timer("5:01"))
+        self.assertIsNone(parse_timer("00:001"))
+        self.assertIsNone(parse_timer("00:60"))
+
     def test_keeps_the_original_anchor_during_normal_tracking(self):
         synchronizer = TimerSynchronizer()
 

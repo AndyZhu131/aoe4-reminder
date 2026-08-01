@@ -1,5 +1,7 @@
 # FAQ
 
+The installed app includes this document at `resources/docs/FAQ.md`.
+
 ## Why does the villager reminder not know how many Town Centers I have?
 
 The app is screen/OCR based. It only sees the global queue and determines
@@ -54,6 +56,29 @@ Set the monitor and resolution in overlay settings, then use the position reset
 or recalibration action. A calibration belongs to a specific monitor and
 resolution profile; changing monitor configuration without recalibrating can
 misalign captures.
+
+## What does the overlay lock do?
+
+Locking makes the overlay click-through so it cannot steal focus from Age of
+Empires IV during play. The lock button remains available to unlock it, and the
+keyboard shortcut `Ctrl+Alt+L` also toggles the lock. Locking closes the settings
+panel and makes pause and reset look inactive because they cannot be clicked
+until the overlay is unlocked.
+
+## What does the status indicator mean?
+
+The status indicator is in the overlay utility bar:
+
+- Green, `Running`: the monitor is running and has received useful game data.
+- Yellow, `Paused` or `Not started`: reminders are paused, or the monitor has
+  not yet received a usable timer reading.
+- Red, `Error`: the monitoring process stopped or encountered a critical
+  dependency or screen-capture error, such as unavailable Tesseract OCR or a
+  Windows BitBlt access failure.
+
+Open the developer console from settings for the specific error. After fixing a
+configuration or permission problem, restart the app to start a fresh monitor
+session.
 
 ## Why do captures not align after changing resolution or Windows display scaling?
 

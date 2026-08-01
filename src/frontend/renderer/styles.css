@@ -72,6 +72,58 @@ body {
   -webkit-app-region: drag;
 }
 
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  align-self: stretch;
+  padding: 0 10px;
+  -webkit-app-region: drag;
+}
+
+.status-indicator::before {
+  width: 10px;
+  height: 10px;
+  border: 1px solid rgba(244, 247, 250, 0.5);
+  border-radius: 50%;
+  box-shadow: 0 0 7px currentColor;
+  content: "";
+}
+
+.status-indicator__label {
+  color: rgba(235, 242, 241, 0.88);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.status-indicator--green {
+  color: #74d3c4;
+}
+
+.status-indicator--green::before {
+  background: #74d3c4;
+}
+
+.status-indicator--yellow {
+  color: #f2c46d;
+}
+
+.status-indicator--yellow::before {
+  background: #f2c46d;
+}
+
+.status-indicator--red {
+  color: #ff6056;
+}
+
+.status-indicator--red::before {
+  background: #ff6056;
+}
+
 .icon-button {
   -webkit-app-region: no-drag;
 }
@@ -177,8 +229,10 @@ body {
 
 .session-status {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
   width: 100%;
 }
 

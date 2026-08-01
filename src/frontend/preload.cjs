@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld("aoeOverlay", {
     ipcRenderer.on("overlay:paused", (_event, paused) => callback(paused)),
   onInteractionLocked: (callback) =>
     ipcRenderer.on("overlay:interaction-locked", (_event, locked) => callback(locked)),
+  onMonitorHealth: (callback) =>
+    ipcRenderer.on("overlay:monitor-health", (_event, health) => callback(health)),
   onDeveloperConsoleLog: (callback) =>
     ipcRenderer.on("developer-console:log", (_event, entry) => callback(entry)),
 });
