@@ -19,6 +19,7 @@ let captureSettings = { resolution: "2560x1440", monitor: 1 };
 let resetPending = false;
 let resetFallbackTimer;
 let interactionLocked = true;
+let monitorHealth = { status: "starting" };
 
 function applyOverlayScale() {
   const scale = Number(captureSettings.overlayScale) || 1;
@@ -72,6 +73,22 @@ function timerLabel() {
 function apmLabel() {
   const apm = Number(state.session?.actionsPerMinute);
   return Number.isFinite(apm) ? String(Math.max(0, Math.round(apm))) : "--";
+}
+
+function reminderHealthIndicator() {
+  if (monitorHealth.status === "failed") {
+    return { color: "red", label: "Error" };
+  }
+
+  const timerSeconds = parseTimer(state.session?.estimatedTimer);
+  if (state.remindersPaused ?? remindersPaused) {
+    return { color: "yellow", label: "Paused" };
+  }
+  if (monitorHealth.status !== "running" || timerSeconds === null || timerSeconds === 0) {
+    return { color: "yellow", label: "Not started" };
+  }
+
+  return { color: "green", label: "Running" };
 }
 
 function reminderControlsReady() {
@@ -170,7 +187,7 @@ function techIsAvailable(technology) {
 
 function renderTechnology(technology, detected, locked) {
   return `
-    <div class="technology ${detected.has(technology.key) ? "technology--detected" : ""} ${locked ? "technology--locked" : ""}" title="${technology.displayName}">
+    <div class="technology ${detected.has(technology.key) ? "technology--detected" : ""} ${locked ? "technology--locked" : ""}">
       <img src="${technology.iconUrl}" alt="" />
     </div>
   `;
@@ -197,6 +214,7 @@ function render() {
   const villagerIdle = state.villagerReminder ?? state.villagerProductionActive === false;
   const paused = state.remindersPaused ?? remindersPaused;
   const controlsReady = reminderControlsReady();
+  const health = reminderHealthIndicator();
   overlay.className = [
     "overlay",
     !paused && villagerIdle ? "overlay--urgent" : "overlay--quiet",
@@ -209,11 +227,14 @@ function render() {
   overlay.innerHTML = `
     <div class="rail">
       <div class="overlay-controls">
-        <div class="drag-area" title="Drag to move"></div>
-        <button class="icon-button" id="settings-button" type="button" title="Settings" aria-label="Settings">&#9881;</button>
-        <button class="icon-button" id="hide-button" type="button" title="Hide overlay" aria-label="Hide overlay">&minus;</button>
-        <button class="icon-button" id="close-button" type="button" title="Close overlay" aria-label="Close overlay">&times;</button>
-        <button class="icon-button interaction-lock-button" id="interaction-lock-button" type="button" title="${interactionLocked ? "Overlay is click-through. Press Ctrl+Alt+L to unlock." : "Lock overlay controls (Ctrl+Alt+L)"}" aria-label="${interactionLocked ? "Unlock overlay controls" : "Lock overlay controls"}" aria-pressed="${interactionLocked}">${interactionLocked ? "&#128274;" : "&#128275;"}</button>
+        <div class="status-indicator status-indicator--${health.color}" role="status" aria-label="${health.label}">
+          <span class="status-indicator__label">${health.label}</span>
+        </div>
+        <div class="drag-area"></div>
+        <button class="icon-button" id="settings-button" type="button" aria-label="Settings">&#9881;</button>
+        <button class="icon-button" id="hide-button" type="button" aria-label="Hide overlay">&minus;</button>
+        <button class="icon-button" id="close-button" type="button" aria-label="Close overlay">&times;</button>
+        <button class="icon-button interaction-lock-button" id="interaction-lock-button" type="button" aria-label="${interactionLocked ? "Unlock overlay controls" : "Lock overlay controls"}" aria-pressed="${interactionLocked}">${interactionLocked ? "&#128274;" : "&#128275;"}</button>
       </div>
       ${settingsOpen ? `
         <div class="settings-panel">
@@ -240,19 +261,19 @@ function render() {
       <div class="reminder-content">
         <aside class="status-panel">
           <div class="session-status">
-            <div class="age-marker" title="Current age"><span>Age</span><strong>${ageLabel(state.age)}</strong></div>
-            <time class="game-timer" title="Game timer">${timerLabel()}</time>
+            <div class="age-marker"><span>Age</span><strong>${ageLabel(state.age)}</strong></div>
+            <time class="game-timer">${timerLabel()}</time>
           </div>
-          <div class="apm-tracker" title="Actions per minute"><span>APM</span><strong>${apmLabel()}</strong></div>
+          <div class="apm-tracker"><span>APM</span><strong>${apmLabel()}</strong></div>
           <div class="reminder-actions">
-            <button class="reminder-action" id="pause-reminders-button" type="button" title="${paused ? "Resume reminders" : "Pause reminders"}" aria-label="${paused ? "Resume reminders" : "Pause reminders"}" aria-pressed="${paused}" ${controlsReady ? "" : "disabled"}>${paused ? "&#9654;" : "&#10074;&#10074;"}</button>
-            <button class="reminder-action" id="reset-reminders-button" type="button" title="Reset reminder session" aria-label="Reset reminder session" ${controlsReady ? "" : "disabled"}>&#8635;</button>
+            <button class="reminder-action" id="pause-reminders-button" type="button" aria-label="${paused ? "Resume reminders" : "Pause reminders"}" aria-pressed="${paused}" ${controlsReady ? "" : "disabled"}>${paused ? "&#9654;" : "&#10074;&#10074;"}</button>
+            <button class="reminder-action" id="reset-reminders-button" type="button" aria-label="Reset reminder session" ${controlsReady ? "" : "disabled"}>&#8635;</button>
           </div>
           <div class="villager-reminder">
-            <div class="villager-alert ${villagerIdle ? "villager-alert--idle" : "villager-alert--active"}" title="${villagerIdle ? "Villager production is idle" : "Villager production is active"}">
+            <div class="villager-alert ${villagerIdle ? "villager-alert--idle" : "villager-alert--active"}">
               <img src="${villagerIconUrl}" alt="" />
             </div>
-            <label class="villager-sound-toggle" title="Enable villager reminder sound">
+            <label class="villager-sound-toggle">
               <input id="villager-sound-toggle" type="checkbox" ${villagerSoundEnabled ? "checked" : ""} />
               <span>Sound</span>
             </label>
@@ -371,6 +392,7 @@ async function start() {
   villagerSoundEnabled = captureSettings.villagerSoundEnabled !== false;
   remindersPaused = bootstrap.remindersPaused;
   interactionLocked = bootstrap.interactionLocked === true;
+  monitorHealth = bootstrap.monitorHealth || monitorHealth;
   render();
 
   window.aoeOverlay.onState((nextState) => {
@@ -390,6 +412,10 @@ async function start() {
   window.aoeOverlay.onInteractionLocked((locked) => {
     interactionLocked = locked;
     if (locked) settingsOpen = false;
+    render();
+  });
+  window.aoeOverlay.onMonitorHealth((health) => {
+    monitorHealth = health || monitorHealth;
     render();
   });
 }

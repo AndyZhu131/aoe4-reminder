@@ -51,6 +51,10 @@
       {
         "from": "../../sound",
         "to": "app-assets/sound"
+      },
+      {
+        "from": "../../docs/FAQ.md",
+        "to": "docs/FAQ.md"
       }
     ],
     "win": {

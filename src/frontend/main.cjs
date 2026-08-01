@@ -80,6 +80,8 @@ let quitCleanupStarted = false;
 const developerLogLines = [];
 const maxDeveloperLogLines = 500;
 const preferredWindowsPython = "C:\\Python313\\python.exe";
+let monitorHealth = { status: "starting", message: "Waiting for the monitor to start." };
+const expectedMonitorStops = new WeakSet();
 
 function pythonCommand() {
   if (process.platform !== "win32") return "python3";
@@ -174,18 +176,73 @@ function writeOverlayControls(controls) {
   fs.renameSync(temporaryPath, runtimeControlsPath);
 }
 
-function appendDeveloperLog(source, message) {
+function appendDeveloperLog(source, message, level = "info") {
   for (const line of String(message).split(/\r?\n/)) {
     if (!line) continue;
     const entry = {
       timestamp: new Date().toLocaleTimeString(),
       source,
+      level,
       message: line,
     };
     developerLogLines.push(entry);
     if (developerLogLines.length > maxDeveloperLogLines) developerLogLines.shift();
     developerWindow?.webContents.send("developer-console:log", entry);
   }
+}
+
+function monitorInfoSummary(line) {
+  const output = String(line).trim();
+  if (!output) return undefined;
+
+  if (output.startsWith("TECH_DETECTED:") || output.startsWith("VILLAGER_REMINDER:")) {
+    return output;
+  }
+
+  // The timer snapshot is emitted by the monitor on its timer interval. Keep the
+  // Info feed readable while preserving the original dictionary in Debug.
+  if (output.startsWith("{'timer':")) {
+    const estimatedTimer = /'estimatedTimer': '([^']+)'/.exec(output)?.[1];
+    const age = /'age': '([^']+)'/.exec(output)?.[1];
+    const status = /'status': '([^']+)'/.exec(output)?.[1];
+    if (estimatedTimer && age) {
+      return `TIME: ${estimatedTimer} AGE: ${age}${status ? ` STATUS: ${status}` : ""}`;
+    }
+  }
+
+  if (/(?:^|\s)error:|\b[A-Z_]+_FAILED\b/i.test(output)) {
+    return `ERROR: ${output}`;
+  }
+
+  return undefined;
+}
+
+function appendMonitorOutput(data) {
+  for (const line of String(data).split(/\r?\n/)) {
+    if (!line) continue;
+    appendDeveloperLog("monitor", line, "debug");
+    const summary = monitorInfoSummary(line);
+    if (summary) appendDeveloperLog("monitor", summary, "info");
+  }
+}
+
+function setMonitorHealth(status, message) {
+  const nextHealth = { status, message };
+  if (
+    monitorHealth.status === nextHealth.status
+    && monitorHealth.message === nextHealth.message
+  ) {
+    return;
+  }
+  monitorHealth = nextHealth;
+  overlayWindow?.webContents.send("overlay:monitor-health", monitorHealth);
+}
+
+function monitorFailureMessage(output) {
+  return String(output)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => /(?:^|\s)error:/i.test(line));
 }
 
 function clearDebugEvents() {
@@ -625,6 +682,7 @@ function openDeveloperConsole() {
 function launchMonitor() {
   if (monitorProcess) return;
 
+  setMonitorHealth("starting", "Starting monitor.");
   const tesseractArguments = tesseractCommand();
   const backend = backendInvocation([
     "watch-monitor",
@@ -660,18 +718,31 @@ function launchMonitor() {
 
   child.stdout.on("data", (data) => {
     process.stdout.write(`[monitor] ${data}`);
-    appendDeveloperLog("monitor", data);
+    appendMonitorOutput(data);
   });
   child.stderr.on("data", (data) => {
     process.stderr.write(`[monitor] ${data}`);
-    appendDeveloperLog("monitor", data);
+    appendMonitorOutput(data);
+    const failure = monitorFailureMessage(data);
+    if (failure) setMonitorHealth("failed", failure);
+  });
+  child.once("spawn", () => {
+    setMonitorHealth("running", "Monitor is running.");
   });
   child.once("error", (error) => {
     appendDeveloperLog("monitor", `failed to start: ${error.message}`);
+    setMonitorHealth("failed", error.message);
   });
   child.once("exit", (code, signal) => {
+    const expectedStop = expectedMonitorStops.has(child);
     monitorProcess = undefined;
     appendDeveloperLog("monitor", `stopped (code=${code}, signal=${signal})`);
+    if (!expectedStop) {
+      setMonitorHealth(
+        "failed",
+        `Monitor stopped (code=${code ?? "none"}, signal=${signal ?? "none"}).`,
+      );
+    }
   });
 }
 
@@ -681,6 +752,8 @@ function restartMonitor() {
     return;
   }
   const child = monitorProcess;
+  expectedMonitorStops.add(child);
+  setMonitorHealth("starting", "Restarting monitor.");
   appendDeveloperLog("monitor", "restarting for updated capture settings");
   child.once("exit", () => launchMonitor());
   child.kill();
@@ -735,6 +808,7 @@ app.whenReady().then(() => {
     captureSettings: captureSettingsForRenderer(),
     remindersPaused,
     interactionLocked: overlayInteractionLocked,
+    monitorHealth,
   }));
   ipcMain.handle("overlay:hide", hideOverlay);
   ipcMain.handle("overlay:close", () => app.quit());
@@ -864,6 +938,7 @@ app.on("before-quit", (event) => {
   }
 
   const child = monitorProcess;
+  expectedMonitorStops.add(child);
   child.once("exit", finishQuit);
   child.kill();
   setTimeout(finishQuit, 800);

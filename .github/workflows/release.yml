@@ -1,0 +1,78 @@
+name: Publish Windows release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish installer
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Tesseract OCR
+        shell: pwsh
+        run: choco install tesseract --yes --no-progress
+
+      - name: Install frontend dependencies
+        shell: pwsh
+        run: npm.cmd ci --prefix src/frontend
+
+      - name: Verify release version
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ("v$version" -ne $env:GITHUB_REF_NAME) {
+            throw "Tag '$env:GITHUB_REF_NAME' must match package.json version 'v$version'."
+          }
+          "AOE4_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build Windows installer
+        shell: pwsh
+        env:
+          AOE4_PYTHON: python
+        run: npm.cmd run dist
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AoE4-Reminder-Setup-${{ env.AOE4_VERSION }}
+          path: release/${{ env.AOE4_VERSION }}/AoE4-Reminder-Setup-*.exe
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $installer = Get-ChildItem -Path "release/$env:AOE4_VERSION" -Filter "AoE4-Reminder-Setup-*.exe" | Select-Object -First 1
+          if (-not $installer) {
+            throw "The installer was not produced."
+          }
+
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $installer.FullName --repo $env:GITHUB_REPOSITORY --clobber
+          } else {
+            gh release create $tag $installer.FullName --repo $env:GITHUB_REPOSITORY --title "AoE4 Reminder $tag" --generate-notes
+          }

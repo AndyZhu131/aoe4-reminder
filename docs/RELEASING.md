@@ -29,6 +29,24 @@ Code signing is controlled by `release.codeSigning` in the root `package.json`.
 It is currently `false`. When enabled, the build requires valid Electron Builder
 Windows signing credentials and fails instead of producing an unsigned release.
 
+## Automated GitHub release
+
+Pushing a version tag starts the Windows GitHub Actions release workflow. It
+installs the frontend and release-build dependencies, installs Tesseract, builds
+the installer, and attaches it to a GitHub Release. The workflow refuses to
+publish when the tag and root `package.json` version differ.
+
+After the version bump has been merged, create and push a matching tag:
+
+```powershell
+git tag v1.1.3
+git push origin v1.1.3
+```
+
+The workflow publishes `release/<version>/AoE4-Reminder-Setup-<version>.exe`.
+Code signing remains disabled until `release.codeSigning` is enabled and the
+repository has the required Windows signing credentials.
+
 Runtime dependencies are listed in `src/requirements.txt`; release-only build
 dependencies are in `src/requirements-build.txt`.
 
